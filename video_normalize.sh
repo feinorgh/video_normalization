@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -o nounset
+set -euo pipefail
 
 SOURCE_DIR="."
 VERBOSE=0
@@ -109,7 +109,7 @@ find_dvd_and_bluray_directories() {
 reencode_video() {
     local VIDEO_FILE VIDEO_FILE_NAME DIMENSIONS DURATION VMAF_LOG VMAF_SCORE
     local FILM_GRAIN=0
-    local CRF=28
+    local CRF=32
     local PRESET=4
     local PIX_FMT=yuv420p10le
     local SVT_AV1_TUNE=1
@@ -146,7 +146,7 @@ reencode_video() {
     VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
     printf "%s\n" "$VMAF_SCORE"
     vmaf_is_valid=$(echo "$VMAF_SCORE >= $VMAF_THRESHOLD" | bc --mathlib)
-    ssim_is_valid=$(echo "$VMAF_SCORE >= $SSIM_THRESHOLD" | bc --mathlib)
+    ssim_is_valid=$(echo "$SSIM_SCORE >= $SSIM_THRESHOLD" | bc --mathlib)
     if [[ $ssim_is_valid -eq 1 ]] && [[ $vmaf_is_valid -eq 1 ]]; then
         printf "Stream is valid with VMAF score of %s and a SSIM score of %s\n" "$VMAF_SCORE" "$SSIM_SCORE"
     else
