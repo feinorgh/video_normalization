@@ -115,7 +115,9 @@ reencode_video() {
     local PIX_FMT=yuv420p10le
     local SVT_AV1_TUNE=1
     local CLIP_START="00:02:00"
-    local CLIP_LENGTH="00:00:30"
+    # local CLIP_LENGTH="00:00:30"
+    local CLIP_LENGTH="30.0"
+    local -a FFMPEG_ARGS
     VIDEO_FILE="$1"
     DIMENSIONS="$2"
     DURATION="$3"
@@ -127,12 +129,26 @@ reencode_video() {
     mkdir "$WORK_DIR/reference" || exit 1
     mkdir "$WORK_DIR/original" || exit 1
 
-    if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME"; then
+    FFMPEG_ARGS+=(-hide_banner -loglevel error -stats -fflags +genpts)
+    if [ "$(echo "$DURATION <= 60.0" | bc --mathlib)" -eq 1 ]; then
+        printf "INFO: Duration is less than 60 seconds, will use whole video.\n" >&2
+    else
+        # divide the length of the video in two, use that as the middle point, then count N seconds around
+        # the middle to get a (hopefully) representative clip
+        local MIDDLE_POINT
+        MIDDLE_POINT="$(echo "scale=2; $DURATION / 2.0" | bc --mathlib)"
+        CLIP_START="$(echo "scale=2; $MIDDLE_POINT - ($CLIP_LENGTH / 2.0)" | bc --mathlib)"
+        FFMPEG_ARGS+=(-ss "$CLIP_START" -t "$CLIP_LENGTH")
+    fi
+
+    # if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME"; then
+    if ! ffmpeg "${FFMPEG_ARGS[@]}" -i "$VIDEO_FILE" -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME"; then
         printf "ERROR: Could not extract reference clip\n" >&2
         cleanup
         return 1
     fi
-    if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v copy -c:a copy "$WORK_DIR/original/$VIDEO_FILE_NAME"; then
+    # if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v copy -c:a copy "$WORK_DIR/original/$VIDEO_FILE_NAME"; then
+    if ! ffmpeg "${FFMPEG_ARGS[@]}" -i "$VIDEO_FILE" -c:v copy -an "$WORK_DIR/original/$VIDEO_FILE_NAME"; then
         printf "ERROR: Could not extract baseline clip\n" >&2
         cleanup
         return 1
