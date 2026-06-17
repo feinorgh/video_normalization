@@ -9,6 +9,7 @@ POSITIONAL_ARGS=()
 WORK_DIR=""
 VMAF_THRESHOLD="93.00"
 SSIM_THRESHOLD="0.98"
+SIZE_RATIO_THRESHOLD="0.75"
 
 cleanup() {
     if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
@@ -107,29 +108,52 @@ find_dvd_and_bluray_directories() {
 }
 
 reencode_video() {
-    local VIDEO_FILE VIDEO_FILE_NAME DIMENSIONS DURATION VMAF_LOG VMAF_SCORE
+    local VIDEO_FILE VIDEO_FILE_NAME DIMENSIONS DURATION VMAF_LOG VMAF_SCORE ORIGINAL_SIZE ENCODED_SIZE SIZE_RATIO
     local FILM_GRAIN=0
     local CRF=32
     local PRESET=4
     local PIX_FMT=yuv420p10le
     local SVT_AV1_TUNE=1
+    local CLIP_START="00:02:00"
+    local CLIP_LENGTH="00:00:30"
     VIDEO_FILE="$1"
     DIMENSIONS="$2"
     DURATION="$3"
     WORK_DIR="$(mktemp --directory)"
 
     VIDEO_FILE_NAME="$(basename "$VIDEO_FILE").mkv"
-    # extract a one minute reference clip from the full video, decode it fully lossless without audio first
+    # extract a reference clip from the full video, decode it fully lossless without audio first
+    # also extract a reference clip with the original codec, to compare compression efficiency
     mkdir "$WORK_DIR/reference" || exit 1
-    ffmpeg -hide_banner -loglevel error -stats -ss 00:02:00 -i "$VIDEO_FILE" -t 00:01:00 -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME"
+    mkdir "$WORK_DIR/original" || exit 1
+
+    if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME"; then
+        printf "ERROR: Could not extract reference clip\n" >&2
+        cleanup
+        return 1
+    fi
+    if ! ffmpeg -hide_banner -loglevel error -stats -ss "$CLIP_START" -i "$VIDEO_FILE" -t "$CLIP_LENGTH" -c:v copy -c:a copy "$WORK_DIR/original/$VIDEO_FILE_NAME"; then
+        printf "ERROR: Could not extract baseline clip\n" >&2
+        cleanup
+        return 1
+    fi
+    ORIGINAL_SIZE=$(stat --format "%s" "$WORK_DIR/original/$VIDEO_FILE_NAME")
+
     # encode the test clip to libsvtav1
-    SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel error -stats -y -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" -c:v libsvtav1 -crf "$CRF" -preset "$PRESET" -pix_fmt "$PIX_FMT" -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN" -fps_mode passthrough -an "$WORK_DIR/candidate.mkv"
+    if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel error -stats -y -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" -c:v libsvtav1 -crf "$CRF" -preset "$PRESET" -pix_fmt "$PIX_FMT" -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN" -fps_mode passthrough -an "$WORK_DIR/candidate.mkv"; then
+        printf "ERROR: Could not encode source material to SVT-AV1\n" >&2
+        cleanup
+        return 1
+    fi
+    ENCODED_SIZE=$(stat --format "%s" "$WORK_DIR/candidate.mkv")
+
     # calculate the number of frames in each file
     SRC_FRAMES=$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 "$WORK_DIR/reference/$VIDEO_FILE_NAME")
     CND_FRAMES=$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 "$WORK_DIR/candidate.mkv")
     if [[ $SRC_FRAMES != "$CND_FRAMES" ]]; then
-        printf "ERROR: Difference number of frames (%s vs %s)" "$SRC_FRAMES" "$CND_FRAMES" >&2
-        exit 1
+        printf "ERROR: Different number of frames (%s vs %s)\n" "$SRC_FRAMES" "$CND_FRAMES" >&2
+        cleanup
+        return 1
     fi
 
     # run a perceptual metric comparison
@@ -145,14 +169,26 @@ reencode_video() {
         -filter_complex "[0:v]setpts=N,setsar=1,format=yuv420p10le[distorted];[1:v]setpts=N,setsar=1,format=yuv420p10le[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" -f null - 2>&1)"
     VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
     printf "%s\n" "$VMAF_SCORE"
+
     vmaf_is_valid=$(echo "$VMAF_SCORE >= $VMAF_THRESHOLD" | bc --mathlib)
     ssim_is_valid=$(echo "$SSIM_SCORE >= $SSIM_THRESHOLD" | bc --mathlib)
     if [[ $ssim_is_valid -eq 1 ]] && [[ $vmaf_is_valid -eq 1 ]]; then
         printf "Stream is valid with VMAF score of %s and a SSIM score of %s\n" "$VMAF_SCORE" "$SSIM_SCORE"
     else
-        printf "WARNING: Could not establish proper baseline for %s" "$VIDEO_FILE" >&2
+        printf "WARNING: Could not establish proper baseline for %s\n" "$VIDEO_FILE" >&2
+        cleanup
         return 1
     fi
+
+    SIZE_RATIO="$(echo "scale=2; $ENCODED_SIZE / $ORIGINAL_SIZE" | bc --mathlib)"
+    printf "Original size: %s bytes, encoded size: %s bytes; ratio: %s\n" "$ORIGINAL_SIZE" "$ENCODED_SIZE" "$SIZE_RATIO"
+    size_is_valid=$(echo "$SIZE_RATIO <= $SIZE_RATIO_THRESHOLD" | bc --mathlib)
+    if [[ $size_is_valid -eq 1 ]]; then
+        printf "OK, enough size gains found. Will encode the whole file\n"
+    else
+        printf "NOT OK, original file will be preserved\n"
+    fi
+    cleanup
 }
 
 get_video_info() {
@@ -162,11 +198,10 @@ get_video_info() {
     DIMENSIONS="$(jq --raw-output '.[] | (.width | tostring) + "x" + (.height | tostring)'<<< "$VIDEO_INFO")"
     CODEC="$(jq --raw-output '.[].codec_name'<<< "$VIDEO_INFO")"
     DURATION="$(jq --raw-output '.[].duration'<<< "$VIDEO_INFO")"
-    printf "%s (%s) (%s s)\n" "$CODEC" "$DIMENSIONS" "$DURATION"
+    printf "%s: %s (%s) (%s s)\n" "$VIDEO_FILE" "$CODEC" "$DIMENSIONS" "$DURATION"
     if ! reencode_video "$VIDEO_FILE" "$DIMENSIONS" "$DURATION"; then
         printf "Could not reliably convert video\n"
     fi
-    exit 0
 }
 
 main() {
