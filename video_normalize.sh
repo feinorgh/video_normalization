@@ -28,11 +28,11 @@ cleanup() {
         fi
 
         # Unconditionally purge the volatile memory workspace
-        rm --recursive "$WORK_DIR"
+        rm -rf -- "$WORK_DIR"
     fi
 }
 
-trap cleanup TERM EXIT
+trap cleanup EXIT ERR INT TERM
 
 print_verbose() {
     if [ "$VERBOSE" -eq 0 ]; then
@@ -62,7 +62,6 @@ parse_options() {
                 ;;
         esac
     done
-    set -- "${POSITIONAL_ARGS[@]:-}"
 }
 
 reencode_video() {
@@ -247,7 +246,7 @@ get_video_info() {
 main() {
     local mime_type
     parse_options "$@"
-    if [ -n "${1-}" ]; then
+    if (( ${#POSITIONAL_ARGS[@]}> 0 )); then
         SOURCE_DIR="${POSITIONAL_ARGS[0]}"
     fi
 
