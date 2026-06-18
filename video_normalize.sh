@@ -224,12 +224,16 @@ reencode_video() {
     else
         printf "ABORT: Data optimization bounds not met (%s > %s). Original preserved.\n" "$SIZE_RATIO" "$SIZE_RATIO_THRESHOLD"
     fi
+    if [ -d "${WORK_DIR:-}" ]; then
+        rm -rf "$WORK_DIR"
+    fi
 }
 
 get_video_info() {
     local VIDEO_FILE VIDEO_INFO DIMENSIONS CODEC DURATION
     VIDEO_FILE="$1"
 
+    print_verbose "Acquiring video metadata for '$VIDEO_FILE'..."
     if ! VIDEO_INFO="$(ffprobe -loglevel error -select_streams v:0 -output_format json -show_entries stream "$VIDEO_FILE")"; then
         printf "ERROR: Failed to query stream mappings for %s\n" "$VIDEO_FILE" >&2
         return 1
