@@ -14,6 +14,8 @@ cleanup() {
     local exit_code=$?
     if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR" ]; then
         if [[ $exit_code -ne 0 ]]; then
+            # if we fail, we remove the WORK_DIR, but output the execution.log before it disappears
+            # for troubleshooting
             printf "\n============================================================\n" >&2
             printf "CRITICAL ABORT: Execution failed. Dumping diagnostic logs:\n" >&2
             printf "============================================================\n\n" >&2
@@ -77,9 +79,9 @@ reencode_video() {
     local PIX_FMT="yuv420p10le"
     local CLIP_LENGTH="30.0"
 
-    WORK_DIR="$(mktemp --directory)"
+    WORK_DIR="$(mktemp -d)"
     local LOG_FILE="$WORK_DIR/execution.log"
-    VIDEO_FILE_NAME="$(basename "$VIDEO_FILE").mkv"
+    VIDEO_FILE_NAME="${VIDEO_FILE%.*}.mkv"
 
     mkdir "$WORK_DIR/reference" || exit 1
     mkdir "$WORK_DIR/original" || exit 1
@@ -246,7 +248,7 @@ get_video_info() {
 main() {
     local mime_type
     parse_options "$@"
-    if (( ${#POSITIONAL_ARGS[@]}> 0 )); then
+    if (( ${#POSITIONAL_ARGS[@]} > 0 )); then
         SOURCE_DIR="${POSITIONAL_ARGS[0]}"
     fi
 
