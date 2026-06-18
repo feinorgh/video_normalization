@@ -9,11 +9,22 @@ WORK_DIR=""
 VMAF_THRESHOLD="93.00"
 SSIM_THRESHOLD="0.98"
 SIZE_RATIO_THRESHOLD="0.80"
+DIAGNOSTICS_DUMPED=0
+
+require_command() {
+    local cmd
+    for cmd in "$@"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            printf "ERROR: Required command not found: %s\n" "$cmd"
+            exit 1
+        fi
+    done
+}
 
 cleanup() {
     local exit_code=$?
     if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR" ]; then
-        if [[ $exit_code -ne 0 ]]; then
+        if [[ $exit_code -ne 0 && $DIAGNOSTICS_DUMPED -eq 0 ]]; then
             # if we fail, we remove the WORK_DIR, but output the execution.log before it disappears
             # for troubleshooting
             printf "\n============================================================\n" >&2
@@ -27,6 +38,7 @@ cleanup() {
             fi
 
             printf "\n============================================================\n" >&2
+            DIAGNOSTICS_DUMPED=1
         fi
 
         # Unconditionally purge the volatile memory workspace
@@ -68,6 +80,7 @@ parse_options() {
 
 reencode_video() {
     local VIDEO_FILE VIDEO_FILE_NAME DIMENSIONS DURATION ORIGINAL_SIZE ENCODED_SIZE SIZE_RATIO
+    require_command ffmpeg ffprobe jq bc file stat mktemp
     VIDEO_FILE="$1"
     DIMENSIONS="$2"
     DURATION="$3"
@@ -140,6 +153,10 @@ reencode_video() {
 
         VMAF_LOG="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -i "$WORK_DIR/candidate.mkv" -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" \
                 -filter_complex "[0:v]setpts=N,setsar=1,format=yuv420p10le[distorted];[1:v]setpts=N,setsar=1,format=yuv420p10le[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" -f null - 2>&1 | tee -a "$LOG_FILE")"
+        if ! [[ "$SSIM_SCORE" =~ ^[0-9]+([.][0-9]+)?$ && "$VMAF_SCORE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            printf "ERROR: Parsed metrics are not numeric. Log: %s\n" "$LOG_FILE" >&2
+            return 1
+        fi
 
         SSIM_SCORE=$(echo "$SSIM_LOG" | grep -oE "All:[0-9.]+" | cut -d':' -f2 || true)
         VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
@@ -218,9 +235,9 @@ get_video_info() {
         return 1
     fi
 
-    DIMENSIONS="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[] | (.width | tostring) + "x" + (.height | tostring)' || true)"
-    CODEC="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[].codec_name' || true)"
-    DURATION="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[].duration' || true)"
+    DIMENSIONS="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0] | (.width | tostring) + "x" + (.height | tostring)' || true)"
+    CODEC="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0].codec_name' || true)"
+    DURATION="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0].duration' || true)"
 
     if [[ -z "$DURATION" || "$DURATION" == "null" ]]; then
         DURATION="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$VIDEO_FILE" | jq --raw-output '.format.duration' || true)"
