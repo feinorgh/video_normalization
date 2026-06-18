@@ -165,17 +165,28 @@ reencode_video() {
         local FINAL_OUTPUT="${VIDEO_FILE%.*}.mkv"
         printf "PROCEEDING TO MASTER FILE PROCESSING -> Target: %s (CRF: %d | Preset: %d)\n" "$FINAL_OUTPUT" "$CRF" "$PRESET"
 
-        if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel error -stats -y -fflags +genpts \
+        # CRITICAL FIX: Explicitly drop FFMPEG_ARGS array and pass raw, un-seeked stream flags
+        if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel error -stats -y \
+            -fflags +genpts+igndts -err_detect ignore_err \
             -i "$VIDEO_FILE" \
             -c:v libsvtav1 -crf "$CRF" -preset "$PRESET" -pix_fmt "$PIX_FMT" \
             -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN" \
             -fps_mode passthrough \
-            -c:a libopus -b:a 128k -vbr on \
+            -c:a libopus -b:a 128k -vbr on -af aresample=async=1 \
             "$FINAL_OUTPUT"; then
                 printf "CRITICAL ERROR: Processing failed on complete asset execution for %s\n" "$VIDEO_FILE" >&2
                 cleanup && return 1
         fi
-        printf "SUCCESS: Asset deployment complete.\n"
+        # verify the stream integrity of the final video file
+        if ffmpeg -nostdin -v error -i "$FINAL_OUTPUT" -f null -; then
+            local ORIGINAL_FULL_SIZE FINAL_ENCODED_SIZE FINAL_SIZE_RATIO
+            ORIGINAL_FULL_SIZE="$(stat --format "%s" "$VIDEO_FILE")"
+            FINAL_ENCODED_SIZE="$(stat --format "%s" "$FINAL_OUTPUT")"
+            FINAL_SIZE_RATIO="$(echo "scale=2; $FINAL_ENCODED_SIZE / $ORIGINAL_FULL_SIZE" | bc --mathlib)"
+            printf "SUCCESS: Asset deployment complete. Ratio achieved: %s\n" "$FINAL_SIZE_RATIO"
+        else
+            printf "WARNING: The final encoded file '%s' stream integrity is compromised.\n" "$FINAL_OUTPUT" >&2
+        fi
     else
         printf "ABORT: Data optimization bounds not met (%s > %s). Original preserved.\n" "$SIZE_RATIO" "$SIZE_RATIO_THRESHOLD"
     fi
