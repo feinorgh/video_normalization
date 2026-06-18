@@ -94,7 +94,7 @@ reencode_video() {
 
     WORK_DIR="$(mktemp -d)"
     local LOG_FILE="$WORK_DIR/execution.log"
-    VIDEO_FILE_NAME="${VIDEO_FILE%.*}.mkv"
+    VIDEO_FILE_NAME="$(basename "${VIDEO_FILE%.*}.mkv")"
 
     mkdir "$WORK_DIR/reference" || exit 1
     mkdir "$WORK_DIR/original" || exit 1
@@ -153,13 +153,13 @@ reencode_video() {
 
         VMAF_LOG="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -i "$WORK_DIR/candidate.mkv" -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" \
                 -filter_complex "[0:v]setpts=N,setsar=1,format=yuv420p10le[distorted];[1:v]setpts=N,setsar=1,format=yuv420p10le[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" -f null - 2>&1 | tee -a "$LOG_FILE")"
+        SSIM_SCORE=$(echo "$SSIM_LOG" | grep -oE "All:[0-9.]+" | cut -d':' -f2 || true)
+        VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
+
         if ! [[ "$SSIM_SCORE" =~ ^[0-9]+([.][0-9]+)?$ && "$VMAF_SCORE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
             printf "ERROR: Parsed metrics are not numeric. Log: %s\n" "$LOG_FILE" >&2
             return 1
         fi
-
-        SSIM_SCORE=$(echo "$SSIM_LOG" | grep -oE "All:[0-9.]+" | cut -d':' -f2 || true)
-        VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
 
         if [[ -z "$SSIM_SCORE" || -z "$VMAF_SCORE" ]]; then
             printf "ERROR: Metric extraction failed. Log: %s\n" "$LOG_FILE" >&2
