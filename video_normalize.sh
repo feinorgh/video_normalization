@@ -394,9 +394,13 @@ process_file() {
     local src_file="$1"
     local mime_type target_mkv codec dimensions duration fields
 
-    target_mkv="${src_file%.*}.mkv"
+    if [[ "${src_file,,}" == *.mkv ]]; then
+        target_mkv="${src_file%.*}.normalized.mkv"
+    else
+        target_mkv="${src_file%.*}.mkv"
+    fi
 
-    if [[ -f "$target_mkv" && "$src_file" != "$target_mkv" ]]; then
+    if [[ -f "$target_mkv" ]]; then
         printf "SKIP: target exists '%s'\n" "$target_mkv"
         append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
         return 0
