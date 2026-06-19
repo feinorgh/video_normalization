@@ -128,7 +128,7 @@ Status values include:
 - `metric extraction failed`:
   - verify ffmpeg has `libvmaf`
   - test filters manually on a known-good short clip
-- `Optimization pass encoding failed`:
+- `sample encode failed` / `full encode failed`:
   - verify ffmpeg has `libsvtav1`
   - reduce preset aggressiveness (`--preset 4` or lower number)
 - Script works on Linux but not macOS:
