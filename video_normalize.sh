@@ -425,7 +425,7 @@ process_file() {
     esac
 
     print_verbose "Processing: $src_file | codec=$codec | dim=$dimensions | duration=$duration"
-    reencode_video "$src_file" "$dimensions" "$duration" "$codec"
+    reencode_video "$src_file" "$duration" "$codec"
 }
 
 main() {
