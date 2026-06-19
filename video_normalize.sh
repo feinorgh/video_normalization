@@ -372,6 +372,9 @@ reencode_video() {
         final_ratio="$(echo "scale=4; $final_encoded_size / $original_full_size" | bc --mathlib)"
         printf "SUCCESS: encoded '%s' ratio=%s\n" "$final_output" "$final_ratio"
         append_report_row "$video_file" "$codec" "$duration" "full" "encoded" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "$final_ratio" "success"
+        rm -rf -- "$work_dir"
+        CURRENT_WORK_DIR=""
+        CURRENT_LOG_FILE=""
     else
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "final output integrity check failed"
         return 1
