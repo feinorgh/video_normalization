@@ -102,7 +102,7 @@ init_report() {
     if [[ -z "$REPORT_PATH" ]]; then
         return 0
     fi
-    mkdir -p "$(dirname "$REPORT_PATH")"
+    mkdir -p -- "$(dirname -- "$REPORT_PATH")"
     printf "source_file,codec,duration,action,status,crf,preset,vmaf,ssim,sample_ratio,final_ratio,message\n" > "$REPORT_PATH"
 }
 
