@@ -353,8 +353,12 @@ reencode_video() {
     fi
 
     local final_output original_full_size final_encoded_size final_ratio
-    final_output="${video_file%.*}.mkv"
 
+    if [[ "${video_file,,}" == *.mkv ]]; then
+        final_output="${video_file%.*}.normalized.mkv"
+    else
+        final_output="${video_file%.*}.mkv"
+    fi
     if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
         -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
         -i "$video_file" \
