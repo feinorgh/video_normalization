@@ -226,7 +226,7 @@ get_video_info_fields() {
         duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$video_file" | jq --raw-output '.format.duration' || true)"
     fi
 
-    if [[ -z "$codec" || -z "$dimensions" || -z "$duration" || "$duration" == "null" ]]; then
+    if [[ -z "$codec" || -z "$dimensions" || -z "$duration" || "$duration" == "null" ]] || ! is_number "$duration"; then
         return 1
     fi
 
