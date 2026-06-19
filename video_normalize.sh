@@ -218,6 +218,10 @@ get_video_info_fields() {
     codec="$(echo "$video_info" | jq --raw-output '.streams[0].codec_name' || true)"
     duration="$(echo "$video_info" | jq --raw-output '.streams[0].duration' || true)"
 
+    [[ "$dimensions" == "nullxnull" ]] && dimensions=""
+    [[ "$codec" == "null" ]] && codec=""
+    [[ "$duration" == "null" ]] && duration=""
+
     if [[ -z "$duration" || "$duration" == "null" ]]; then
         duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$video_file" | jq --raw-output '.format.duration' || true)"
     fi
