@@ -394,7 +394,7 @@ process_file() {
         return 0
     fi
 
-    mime_type="$(file --brief --mime-type "$src_file")"
+    mime_type="$(file --brief --mime-type -- "$src_file")"
     if [[ ! "$mime_type" == video/* ]]; then
         append_report_row "$src_file" "" "" "scan" "skipped_nonvideo" "" "" "" "" "" "" "mime type not video"
         return 0
