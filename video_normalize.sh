@@ -336,6 +336,9 @@ reencode_video() {
     if [[ "$(echo "$size_ratio <= $SIZE_RATIO_THRESHOLD" | bc --mathlib)" -ne 1 ]]; then
         printf "ABORT: sample ratio %s exceeds threshold %s\n" "$size_ratio" "$SIZE_RATIO_THRESHOLD"
         append_report_row "$video_file" "$codec" "$duration" "sample" "aborted_ratio" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "sample ratio threshold not met"
+        rm -rf -- "$work_dir"
+        CURRENT_WORK_DIR=""
+        CURRENT_LOG_FILE=""
         return 0
     fi
 
