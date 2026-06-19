@@ -294,10 +294,13 @@ reencode_video() {
         fi
 
         local ssim_log vmaf_log
-        ssim_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+        if ! ssim_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
             -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]ssim" \
-            -f null - 2>&1 | tee -a "$log_file")"
+            -f null - 2>&1 | tee -a "$log_file")"; then
+            append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "ssim run failed"
+            return 1
+        fi
 
         vmaf_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
             -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
