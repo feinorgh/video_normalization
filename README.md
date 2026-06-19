@@ -125,7 +125,7 @@ Status values include:
 ## Troubleshooting
 
 - `Required command not found`: install the missing dependency.
-- `Parsed metrics are not numeric` / `Metric extraction failed`:
+- `metric extraction failed`:
   - verify ffmpeg has `libvmaf`
   - test filters manually on a known-good short clip
 - `Optimization pass encoding failed`:
