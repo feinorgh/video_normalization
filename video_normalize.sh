@@ -246,8 +246,7 @@ reencode_video() {
     work_dir="$(mktemp -d)"
     local log_file="$work_dir/execution.log"
     local video_file_name
-    video_file_name="$(basename "${video_file%.*}.mkv")"
-
+    video_file_name="$(basename -- "${video_file%.*}.mkv")"
     CURRENT_WORK_DIR="$work_dir"
     CURRENT_LOG_FILE="$log_file"
 
