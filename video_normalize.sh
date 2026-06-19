@@ -256,6 +256,7 @@ reencode_video() {
         local middle_point clip_start
         middle_point="$(echo "scale=2; $duration / 2.0" | bc --mathlib)"
         clip_start="$(echo "scale=2; $middle_point - ($CLIP_LENGTH / 2.0)" | bc --mathlib)"
+        if [[ "$(echo "$clip_start < 0" | bc --mathlib)" -eq 1 ]]; then clip_start="0"; fi
         if [[ "$clip_start" =~ ^\. ]]; then clip_start="0${clip_start}"; fi
         ffmpeg_args+=(-ss "$clip_start" -t "$CLIP_LENGTH")
     else
