@@ -345,6 +345,9 @@ reencode_video() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
         printf "DRY-RUN: would encode full file '%s' (CRF=%d preset=%d)\n" "$video_file" "$crf" "$preset"
         append_report_row "$video_file" "$codec" "$duration" "full" "dry_run" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "full encode skipped by dry-run"
+        rm -rf -- "$work_dir"
+        CURRENT_WORK_DIR=""
+        CURRENT_LOG_FILE=""
         return 0
     fi
 
