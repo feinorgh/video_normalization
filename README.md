@@ -28,6 +28,14 @@ Required commands:
 - `file`
 - `mktemp`
 - `find`
+- `grep`
+- `awk`
+- `cut`
+- `tee`
+- `basename`
+- `dirname`
+- `mkdir`
+- `cat`
 - GNU `stat` (`--format` support)
 
 ### FFmpeg capability requirements
