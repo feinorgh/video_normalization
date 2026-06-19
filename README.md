@@ -107,9 +107,9 @@ If `SOURCE_DIR` is omitted, defaults to current directory (`.`).
 
 ## Output Behavior
 
-- Output file path: same directory, same basename, `.mkv` extension.
+- Output file path: same directory and basename; outputs `.mkv` for non-MKV inputs and `.normalized.mkv` for `.mkv` inputs.
 - Originals are never deleted.
-- Existing target `.mkv` causes skip (except when source itself is `.mkv`, which is evaluated).
+- Existing target output causes skip (`*.mkv` for non-MKV inputs, `*.normalized.mkv` for `.mkv` inputs).
 
 ## CSV Report Format
 
