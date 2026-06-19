@@ -441,7 +441,7 @@ main() {
 
     while IFS= read -r -d '' src_file; do
         process_file "$src_file"
-    done < <(find "$SOURCE_DIR" -type f -print0)
+    done < <(find -- "$SOURCE_DIR" -type f -print0)
 }
 
 main "$@"
