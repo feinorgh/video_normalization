@@ -236,9 +236,8 @@ get_video_info_fields() {
 
 reencode_video() {
     local video_file="$1"
-    local dimensions="$2"
-    local duration="$3"
-    local codec="$4"
+    local duration="$2"
+    local codec="$3"
 
     local crf="$START_CRF"
     local preset="$START_PRESET"
@@ -440,7 +439,7 @@ process_file() {
     esac
 
     print_verbose "Processing: $src_file | codec=$codec | dim=$dimensions | duration=$duration"
-    reencode_video "$src_file" "$dimensions" "$duration" "$codec"
+    reencode_video "$src_file" "$duration" "$codec"
 }
 
 main() {
