@@ -5,296 +5,433 @@ set -euo pipefail
 SOURCE_DIR="."
 VERBOSE=0
 POSITIONAL_ARGS=()
-WORK_DIR=""
-VMAF_THRESHOLD="93.00"
+
+# Tunables (defaults)
+VMAF_THRESHOLD="93.0"
 SSIM_THRESHOLD="0.98"
 SIZE_RATIO_THRESHOLD="0.80"
+CLIP_LENGTH="30"
+START_CRF=32
+MIN_CRF=18
+START_PRESET=4
+
+# Fixed encode params
+FILM_GRAIN=0
+SVT_AV1_TUNE=0
+PIX_FMT="yuv420p10le"
+
+# Modes
+DRY_RUN=0
+REPORT_PATH=""
+
+# Diagnostics
 DIAGNOSTICS_DUMPED=0
+CURRENT_LOG_FILE=""
+CURRENT_WORK_DIR=""
+
+show_help() {
+  cat <<'EOF'
+Usage:
+  ./video_normalize.sh [options] [SOURCE_DIR]
+
+Options:
+  -h, --help                      Show this help and exit
+  -v, --verbose                   Enable verbose output
+  --dry-run                       Analyze but do not write final outputs
+  --report <path>                 Write CSV report to file
+  --vmaf-threshold <float>        Default: 93.0
+  --ssim-threshold <float>        Default: 0.98
+  --size-ratio-threshold <float>  Default: 0.80
+  --clip-length <seconds>         Default: 30
+  --start-crf <int>               Default: 32
+  --min-crf <int>                 Default: 18
+  --preset <int>                  Default: 4
+EOF
+}
+
+print_verbose() {
+  if [ "$VERBOSE" -eq 1 ]; then
+    printf "%s\n" "$*"
+  fi
+}
 
 require_command() {
-    local cmd
-    for cmd in "$@"; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            printf "ERROR: Required command not found: %s\n" "$cmd"
-            exit 1
-        fi
-    done
+  local cmd
+  for cmd in "$@"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      printf "ERROR: Required command not found: %s\n" "$cmd" >&2
+      exit 1
+    fi
+  done
+}
+
+is_number() {
+  [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+is_int() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+append_report_row() {
+  if [[ -z "$REPORT_PATH" ]]; then
+    return 0
+  fi
+  local source_file="$1"
+  local codec="$2"
+  local duration="$3"
+  local action="$4"
+  local status="$5"
+  local crf="$6"
+  local preset="$7"
+  local vmaf="$8"
+  local ssim="$9"
+  local sample_ratio="${10}"
+  local final_ratio="${11}"
+  local message="${12}"
+
+  source_file=${source_file//\"/\"\"}
+  message=${message//\"/\"\"}
+
+  printf "\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n" \
+    "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
+    "$vmaf" "$ssim" "$sample_ratio" "$final_ratio" "$message" >> "$REPORT_PATH"
+}
+
+init_report() {
+  if [[ -z "$REPORT_PATH" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$REPORT_PATH")"
+  printf "source_file,codec,duration,action,status,crf,preset,vmaf,ssim,sample_ratio,final_ratio,message\n" > "$REPORT_PATH"
 }
 
 cleanup() {
-    local exit_code=$?
-    if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR" ]; then
-        if [[ $exit_code -ne 0 && $DIAGNOSTICS_DUMPED -eq 0 ]]; then
-            # if we fail, we remove the WORK_DIR, but output the execution.log before it disappears
-            # for troubleshooting
-            printf "\n============================================================\n" >&2
-            printf "CRITICAL ABORT: Execution failed. Dumping diagnostic logs:\n" >&2
-            printf "============================================================\n\n" >&2
-
-            if [ -f "$WORK_DIR/execution.log" ]; then
-                cat "$WORK_DIR/execution.log" >&2
-            else
-                printf "No execution.log file was generated before the crash.\n" >&2
-            fi
-
-            printf "\n============================================================\n" >&2
-            DIAGNOSTICS_DUMPED=1
-        fi
-
-        # Unconditionally purge the volatile memory workspace
-        rm -rf -- "$WORK_DIR"
+  local exit_code=$?
+  if [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]]; then
+    if [[ $exit_code -ne 0 && $DIAGNOSTICS_DUMPED -eq 0 ]]; then
+      printf "\n============================================================\n" >&2
+      printf "CRITICAL ABORT: Execution failed. Dumping diagnostic logs:\n" >&2
+      printf "============================================================\n\n" >&2
+      if [[ -n "${CURRENT_LOG_FILE:-}" && -f "${CURRENT_LOG_FILE}" ]]; then
+        cat "${CURRENT_LOG_FILE}" >&2
+      else
+        printf "No execution.log file was generated before the crash.\n" >&2
+      fi
+      printf "\n============================================================\n" >&2
+      DIAGNOSTICS_DUMPED=1
     fi
+    rm -rf -- "${CURRENT_WORK_DIR}"
+  fi
 }
 
 trap cleanup EXIT ERR INT TERM
 
-print_verbose() {
-    if [ "$VERBOSE" -eq 0 ]; then
-        return
-    fi
-    printf "%s\n" "$*"
+parse_options() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        show_help
+        exit 0
+        ;;
+      -v|--verbose)
+        VERBOSE=1
+        shift
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        shift
+        ;;
+      --report)
+        [[ $# -lt 2 ]] && { printf "ERROR: --report requires a path\n" >&2; exit 1; }
+        REPORT_PATH="$2"
+        shift 2
+        ;;
+      --vmaf-threshold)
+        [[ $# -lt 2 ]] && { printf "ERROR: --vmaf-threshold requires a value\n" >&2; exit 1; }
+        is_number "$2" || { printf "ERROR: Invalid --vmaf-threshold: %s\n" "$2" >&2; exit 1; }
+        VMAF_THRESHOLD="$2"
+        shift 2
+        ;;
+      --ssim-threshold)
+        [[ $# -lt 2 ]] && { printf "ERROR: --ssim-threshold requires a value\n" >&2; exit 1; }
+        is_number "$2" || { printf "ERROR: Invalid --ssim-threshold: %s\n" "$2" >&2; exit 1; }
+        SSIM_THRESHOLD="$2"
+        shift 2
+        ;;
+      --size-ratio-threshold)
+        [[ $# -lt 2 ]] && { printf "ERROR: --size-ratio-threshold requires a value\n" >&2; exit 1; }
+        is_number "$2" || { printf "ERROR: Invalid --size-ratio-threshold: %s\n" "$2" >&2; exit 1; }
+        SIZE_RATIO_THRESHOLD="$2"
+        shift 2
+        ;;
+      --clip-length)
+        [[ $# -lt 2 ]] && { printf "ERROR: --clip-length requires a value\n" >&2; exit 1; }
+        is_number "$2" || { printf "ERROR: Invalid --clip-length: %s\n" "$2" >&2; exit 1; }
+        CLIP_LENGTH="$2"
+        shift 2
+        ;;
+      --start-crf)
+        [[ $# -lt 2 ]] && { printf "ERROR: --start-crf requires a value\n" >&2; exit 1; }
+        is_int "$2" || { printf "ERROR: Invalid --start-crf: %s\n" "$2" >&2; exit 1; }
+        START_CRF="$2"
+        shift 2
+        ;;
+      --min-crf)
+        [[ $# -lt 2 ]] && { printf "ERROR: --min-crf requires a value\n" >&2; exit 1; }
+        is_int "$2" || { printf "ERROR: Invalid --min-crf: %s\n" "$2" >&2; exit 1; }
+        MIN_CRF="$2"
+        shift 2
+        ;;
+      --preset)
+        [[ $# -lt 2 ]] && { printf "ERROR: --preset requires a value\n" >&2; exit 1; }
+        is_int "$2" || { printf "ERROR: Invalid --preset: %s\n" "$2" >&2; exit 1; }
+        START_PRESET="$2"
+        shift 2
+        ;;
+      --*|-*)
+        printf "ERROR: Unknown option '%s'\n" "$1" >&2
+        exit 1
+        ;;
+      *)
+        POSITIONAL_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if (( MIN_CRF > START_CRF )); then
+    printf "ERROR: --min-crf (%d) cannot be greater than --start-crf (%d)\n" "$MIN_CRF" "$START_CRF" >&2
+    exit 1
+  fi
 }
 
-parse_options() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            -v|--verbose)
-                VERBOSE=1
-                shift
-                ;;
-            --*|-*)
-                printf "ERROR: Unknown option '%s'\n" "$1" >&2
-                exit 1
-                ;;
-            *)
-                POSITIONAL_ARGS+=("$1")
-                shift
-                ;;
-        esac
-    done
+get_video_info_fields() {
+  local video_file="$1"
+  local video_info dimensions codec duration
+
+  if ! video_info="$(ffprobe -loglevel error -select_streams v:0 -output_format json -show_entries stream "$video_file")"; then
+    return 1
+  fi
+
+  dimensions="$(echo "$video_info" | jq --raw-output '.streams[0] | (.width|tostring) + "x" + (.height|tostring)' || true)"
+  codec="$(echo "$video_info" | jq --raw-output '.streams[0].codec_name' || true)"
+  duration="$(echo "$video_info" | jq --raw-output '.streams[0].duration' || true)"
+
+  if [[ -z "$duration" || "$duration" == "null" ]]; then
+    duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$video_file" | jq --raw-output '.format.duration' || true)"
+  fi
+
+  if [[ -z "$codec" || -z "$dimensions" || -z "$duration" || "$duration" == "null" ]]; then
+    return 1
+  fi
+
+  printf "%s|%s|%s\n" "$codec" "$dimensions" "$duration"
 }
 
 reencode_video() {
-    local VIDEO_FILE VIDEO_FILE_NAME DIMENSIONS DURATION ORIGINAL_SIZE ENCODED_SIZE SIZE_RATIO
-    require_command ffmpeg ffprobe jq bc file stat mktemp
-    VIDEO_FILE="$1"
-    DIMENSIONS="$2"
-    DURATION="$3"
+  local video_file="$1"
+  local dimensions="$2"
+  local duration="$3"
+  local codec="$4"
 
-    local CRF=32
-    local PRESET=4
-    local FILM_GRAIN=0
-    local SVT_AV1_TUNE=0
-    local PIX_FMT="yuv420p10le"
-    local CLIP_LENGTH="30.0"
+  local crf="$START_CRF"
+  local preset="$START_PRESET"
 
-    WORK_DIR="$(mktemp -d)"
-    local LOG_FILE="$WORK_DIR/execution.log"
-    VIDEO_FILE_NAME="$(basename "${VIDEO_FILE%.*}.mkv")"
+  local work_dir
+  work_dir="$(mktemp -d)"
+  local log_file="$work_dir/execution.log"
+  local video_file_name
+  video_file_name="$(basename "${video_file%.*}.mkv")"
 
-    mkdir "$WORK_DIR/reference" || exit 1
-    mkdir "$WORK_DIR/original" || exit 1
+  CURRENT_WORK_DIR="$work_dir"
+  CURRENT_LOG_FILE="$log_file"
 
-    local -a FFMPEG_ARGS
-    FFMPEG_ARGS=(-hide_banner -loglevel verbose -nostats -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err)
+  mkdir "$work_dir/reference" "$work_dir/original"
 
-    if [ "$(echo "$DURATION <= 60.0" | bc --mathlib)" -eq 1 ]; then
-        print_verbose "INFO: Duration <= 60s, processing whole timeline for sample."
+  local -a ffmpeg_args
+  ffmpeg_args=(-hide_banner -loglevel verbose -nostats -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err)
+
+  if [[ "$(echo "$duration <= 60.0" | bc --mathlib)" -ne 1 ]]; then
+    local middle_point clip_start
+    middle_point="$(echo "scale=2; $duration / 2.0" | bc --mathlib)"
+    clip_start="$(echo "scale=2; $middle_point - ($CLIP_LENGTH / 2.0)" | bc --mathlib)"
+    if [[ "$clip_start" =~ ^\. ]]; then clip_start="0${clip_start}"; fi
+    ffmpeg_args+=(-ss "$clip_start" -t "$CLIP_LENGTH")
+  else
+    print_verbose "INFO: Duration <= 60s, using full timeline as sample."
+  fi
+
+  if ! ffmpeg "${ffmpeg_args[@]}" -i "$video_file" -c:v libx264 -crf 0 -preset ultrafast -an "$work_dir/reference/$video_file_name" >> "$log_file" 2>&1; then
+    append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "reference clip extraction failed"
+    return 1
+  fi
+
+  if ! ffmpeg "${ffmpeg_args[@]}" -i "$video_file" -c:v copy -an "$work_dir/original/$video_file_name" >> "$log_file" 2>&1; then
+    append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "baseline clip extraction failed"
+    return 1
+  fi
+
+  local original_size encoded_size size_ratio ssim_score vmaf_score
+  original_size="$(stat --format "%s" "$work_dir/original/$video_file_name")"
+
+  local optimized=false
+  while [[ "$optimized" == "false" ]]; do
+    print_verbose "Testing profile -> CRF=$crf preset=$preset"
+
+    if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
+      -i "$work_dir/reference/$video_file_name" \
+      -c:v libsvtav1 -crf "$crf" -preset "$preset" -pix_fmt "$PIX_FMT" \
+      -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
+      -fps_mode passthrough -an "$work_dir/candidate.mkv" >> "$log_file" 2>&1 < /dev/null; then
+      append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "sample encode failed"
+      return 1
+    fi
+
+    local ssim_log vmaf_log
+    ssim_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+      -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
+      -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]ssim" \
+      -f null - 2>&1 | tee -a "$log_file")"
+
+    vmaf_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+      -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
+      -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" \
+      -f null - 2>&1 | tee -a "$log_file")"
+
+    ssim_score="$(echo "$ssim_log" | grep -oE 'All:[0-9.]+' | cut -d':' -f2 || true)"
+    vmaf_score="$(echo "$vmaf_log" | grep -oE 'VMAF score: [0-9.]+' | awk '{print $3}' || true)"
+
+    if [[ -z "$ssim_score" || -z "$vmaf_score" ]] || \
+       ! [[ "$ssim_score" =~ ^[0-9]+([.][0-9]+)?$ && "$vmaf_score" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "" "" "metric extraction failed"
+      return 1
+    fi
+
+    local ssim_passes vmaf_passes
+    ssim_passes="$(echo "$ssim_score >= $SSIM_THRESHOLD" | bc --mathlib)"
+    vmaf_passes="$(echo "$vmaf_score >= $VMAF_THRESHOLD" | bc --mathlib)"
+
+    if [[ "$ssim_passes" -eq 1 && "$vmaf_passes" -eq 1 ]]; then
+      if [[ "$(echo "$vmaf_score > 96.5" | bc --mathlib)" -eq 1 && "$preset" -eq 4 ]]; then
+        preset=5
+        continue
+      fi
+      optimized=true
     else
-        local MIDDLE_POINT CLIP_START
-        MIDDLE_POINT="$(echo "scale=2; $DURATION / 2.0" | bc --mathlib)"
-        CLIP_START="$(echo "scale=2; $MIDDLE_POINT - ($CLIP_LENGTH / 2.0)" | bc --mathlib)"
-        if [[ "$CLIP_START" =~ ^\. ]]; then
-            CLIP_START="0${CLIP_START}"
-        fi
-        FFMPEG_ARGS+=(-ss "$CLIP_START" -t "$CLIP_LENGTH")
+      if (( crf <= MIN_CRF )); then
+        printf "WARNING: Hit minimum quality boundary (CRF=%d). Proceeding.\n" "$MIN_CRF" >&2
+        optimized=true
+      else
+        crf=$((crf - 2))
+        preset="$START_PRESET"
+      fi
     fi
+  done
 
-    if ! ffmpeg "${FFMPEG_ARGS[@]}" -i "$VIDEO_FILE" -c:v libx264 -crf 0 -preset ultrafast -an "$WORK_DIR/reference/$VIDEO_FILE_NAME" >> "$LOG_FILE" 2>&1; then
-        printf "ERROR: Could not extract reference clip. Log: %s\n" "$LOG_FILE" >&2
-        return 1
-    fi
+  encoded_size="$(stat --format "%s" "$work_dir/candidate.mkv")"
+  size_ratio="$(echo "scale=4; $encoded_size / $original_size" | bc --mathlib)"
+  printf "Result Metrics -> VMAF=%s SSIM=%s CompressionRatio=%s\n" "$vmaf_score" "$ssim_score" "$size_ratio"
 
-    if ! ffmpeg "${FFMPEG_ARGS[@]}" -i "$VIDEO_FILE" -c:v copy -an "$WORK_DIR/original/$VIDEO_FILE_NAME" >> "$LOG_FILE" 2>&1; then
-        printf "ERROR: Could not extract baseline clip. Log: %s\n" "$LOG_FILE" >&2
-        return 1
-    fi
-    ORIGINAL_SIZE=$(stat --format "%s" "$WORK_DIR/original/$VIDEO_FILE_NAME")
+  if [[ "$(echo "$size_ratio <= $SIZE_RATIO_THRESHOLD" | bc --mathlib)" -ne 1 ]]; then
+    printf "ABORT: sample ratio %s exceeds threshold %s\n" "$size_ratio" "$SIZE_RATIO_THRESHOLD"
+    append_report_row "$video_file" "$codec" "$duration" "sample" "aborted_ratio" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "sample ratio threshold not met"
+    return 0
+  fi
 
-    local SRC_FRAMES
-    SRC_FRAMES=$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 "$WORK_DIR/reference/$VIDEO_FILE_NAME")
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf "DRY-RUN: would encode full file '%s' (CRF=%d preset=%d)\n" "$video_file" "$crf" "$preset"
+    append_report_row "$video_file" "$codec" "$duration" "full" "dry_run" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "full encode skipped by dry-run"
+    return 0
+  fi
 
-    local OPTIMIZED=false
-    while [[ "$OPTIMIZED" == "false" ]]; do
-        print_verbose "Testing Profiles -> CRF: $CRF | Preset: $PRESET | Film-Grain: $FILM_GRAIN"
+  local final_output original_full_size final_encoded_size final_ratio
+  final_output="${video_file%.*}.mkv"
 
-        if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" \
-            -c:v libsvtav1 -crf "$CRF" -preset "$PRESET" -pix_fmt "$PIX_FMT" \
-            -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
-            -fps_mode passthrough -an "$WORK_DIR/candidate.mkv" >> "$LOG_FILE" 2>&1 < /dev/null; then
-                printf "ERROR: Optimization pass encoding failed. Log: %s\n" "$LOG_FILE" >&2
-                return 1
-        fi
+  if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
+    -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
+    -i "$video_file" \
+    -c:v libsvtav1 -crf "$crf" -preset "$preset" -pix_fmt "$PIX_FMT" \
+    -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
+    -fps_mode passthrough \
+    -c:a libopus -b:a 128k -vbr on -af aresample=async=1 \
+    "$final_output" >> "$log_file" 2>&1; then
+    append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "full encode failed"
+    return 1
+  fi
 
-        local CND_FRAMES
-        CND_FRAMES=$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of default=nokey=1:noprint_wrappers=1 "$WORK_DIR/candidate.mkv")
-        if [[ "$SRC_FRAMES" != "$CND_FRAMES" ]]; then
-            printf "WARNING: Jitter detected. Normalizing timeline structures.\n" >&2
-        fi
-
-        local SSIM_LOG SSIM_SCORE VMAF_LOG VMAF_SCORE
-
-        SSIM_LOG="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -i "$WORK_DIR/candidate.mkv" -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" \
-                -filter_complex "[0:v]setpts=N,setsar=1,format=yuv420p10le[distorted];[1:v]setpts=N,setsar=1,format=yuv420p10le[reference];[distorted][reference]ssim" -f null - 2>&1 | tee -a "$LOG_FILE" | grep -oE "All:[0-9.]+" || true)"
-
-        VMAF_LOG="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -i "$WORK_DIR/candidate.mkv" -i "$WORK_DIR/reference/$VIDEO_FILE_NAME" \
-                -filter_complex "[0:v]setpts=N,setsar=1,format=yuv420p10le[distorted];[1:v]setpts=N,setsar=1,format=yuv420p10le[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" -f null - 2>&1 | tee -a "$LOG_FILE")"
-        SSIM_SCORE=$(echo "$SSIM_LOG" | grep -oE "All:[0-9.]+" | cut -d':' -f2 || true)
-        VMAF_SCORE=$(echo "$VMAF_LOG" | grep -oE "VMAF score: [0-9.]+" | awk '{print $3}' || true)
-
-        if ! [[ "$SSIM_SCORE" =~ ^[0-9]+([.][0-9]+)?$ && "$VMAF_SCORE" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-            printf "ERROR: Parsed metrics are not numeric. Log: %s\n" "$LOG_FILE" >&2
-            return 1
-        fi
-
-        if [[ -z "$SSIM_SCORE" || -z "$VMAF_SCORE" ]]; then
-            printf "ERROR: Metric extraction failed. Log: %s\n" "$LOG_FILE" >&2
-            return 1
-        fi
-
-        local ssim_passes vmaf_passes
-        ssim_passes=$(echo "$SSIM_SCORE >= $SSIM_THRESHOLD" | bc --mathlib)
-        vmaf_passes=$(echo "$VMAF_SCORE >= $VMAF_THRESHOLD" | bc --mathlib)
-
-        if [[ $ssim_passes -eq 1 ]] && [[ $vmaf_passes -eq 1 ]]; then
-            if [[ "$(echo "$VMAF_SCORE > 96.5" | bc --mathlib)" -eq 1 && "$PRESET" -eq 4 ]]; then
-                print_verbose "High metric headroom detected. Upgrading to Preset 5 for performance optimization."
-                PRESET=5
-                continue
-            fi
-            OPTIMIZED=true
-        else
-            if [[ "$CRF" -le 18 ]]; then
-                printf "WARNING: Hit minimum quality boundary limit (CRF 18). Proceeding with forced configuration.\n" >&2
-                OPTIMIZED=true
-            else
-                CRF=$((CRF - 2))
-                PRESET=4
-            fi
-        fi
-    done
-
-    ENCODED_SIZE=$(stat --format "%s" "$WORK_DIR/candidate.mkv")
-    SIZE_RATIO="$(echo "scale=2; $ENCODED_SIZE / $ORIGINAL_SIZE" | bc --mathlib)"
-
-    printf "Result Metrics -> VMAF: %s | SSIM: %s | Compression Ratio: %s\n" "$VMAF_SCORE" "$SSIM_SCORE" "$SIZE_RATIO"
-
-    local size_passes
-    size_passes=$(echo "$SIZE_RATIO <= $SIZE_RATIO_THRESHOLD" | bc --mathlib)
-
-    if [[ $size_passes -eq 1 ]]; then
-        local FINAL_OUTPUT="${VIDEO_FILE%.*}.mkv"
-        printf "PROCEEDING TO MASTER FILE PROCESSING -> Target: %s (CRF: %d | Preset: %d)\n" "$FINAL_OUTPUT" "$CRF" "$PRESET"
-
-        if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
-            -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
-            -i "$VIDEO_FILE" \
-            -c:v libsvtav1 -crf "$CRF" -preset "$PRESET" -pix_fmt "$PIX_FMT" \
-            -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
-            -fps_mode passthrough \
-            -c:a libopus -b:a 128k -vbr on -af aresample=async=1 \
-            "$FINAL_OUTPUT" >> "$LOG_FILE" 2>&1; then
-                printf "CRITICAL ERROR: Processing failed on complete asset execution. Log: %s\n" "$LOG_FILE" >&2
-                return 1
-        fi
-
-        if ffprobe -v error -show_entries format=duration "$FINAL_OUTPUT" > /dev/null; then
-            local ORIGINAL_FULL_SIZE FINAL_ENCODED_SIZE FINAL_SIZE_RATIO
-            ORIGINAL_FULL_SIZE="$(stat --format "%s" "$VIDEO_FILE")"
-            FINAL_ENCODED_SIZE="$(stat --format "%s" "$FINAL_OUTPUT")"
-            FINAL_SIZE_RATIO="$(echo "scale=2; $FINAL_ENCODED_SIZE / $ORIGINAL_FULL_SIZE" | bc --mathlib)"
-            printf "SUCCESS: Asset deployment complete. Ratio achieved: %s\n" "$FINAL_SIZE_RATIO"
-        else
-            printf "WARNING: The final encoded file '%s' structural integrity verification failed.\n" "$FINAL_OUTPUT" >&2
-        fi
-    else
-        printf "ABORT: Data optimization bounds not met (%s > %s). Original preserved.\n" "$SIZE_RATIO" "$SIZE_RATIO_THRESHOLD"
-    fi
-    if [ -d "${WORK_DIR:-}" ]; then
-        rm -rf "$WORK_DIR"
-    fi
+  if ffprobe -v error -show_entries format=duration "$final_output" >/dev/null 2>&1; then
+    original_full_size="$(stat --format "%s" "$video_file")"
+    final_encoded_size="$(stat --format "%s" "$final_output")"
+    final_ratio="$(echo "scale=4; $final_encoded_size / $original_full_size" | bc --mathlib)"
+    printf "SUCCESS: encoded '%s' ratio=%s\n" "$final_output" "$final_ratio"
+    append_report_row "$video_file" "$codec" "$duration" "full" "encoded" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "$final_ratio" "success"
+  else
+    append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "final output integrity check failed"
+    return 1
+  fi
 }
 
-get_video_info() {
-    local VIDEO_FILE VIDEO_INFO DIMENSIONS CODEC DURATION
-    VIDEO_FILE="$1"
+process_file() {
+  local src_file="$1"
+  local mime_type target_mkv codec dimensions duration fields
 
-    print_verbose "Acquiring video metadata for '$VIDEO_FILE'..."
-    if ! VIDEO_INFO="$(ffprobe -loglevel error -select_streams v:0 -output_format json -show_entries stream "$VIDEO_FILE")"; then
-        printf "ERROR: Failed to query stream mappings for %s\n" "$VIDEO_FILE" >&2
-        return 1
-    fi
+  target_mkv="${src_file%.*}.mkv"
 
-    DIMENSIONS="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0] | (.width | tostring) + "x" + (.height | tostring)' || true)"
-    CODEC="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0].codec_name' || true)"
-    DURATION="$(echo "$VIDEO_INFO" | jq --raw-output '.streams[0].duration' || true)"
+  if [[ -f "$target_mkv" && "$src_file" != "$target_mkv" ]]; then
+    printf "SKIP: target exists '%s'\n" "$target_mkv"
+    append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
+    return 0
+  fi
 
-    if [[ -z "$DURATION" || "$DURATION" == "null" ]]; then
-        DURATION="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$VIDEO_FILE" | jq --raw-output '.format.duration' || true)"
-    fi
+  mime_type="$(file --brief --mime-type "$src_file")"
+  if [[ ! "$mime_type" == video/* ]]; then
+    append_report_row "$src_file" "" "" "scan" "skipped_nonvideo" "" "" "" "" "" "" "mime type not video"
+    return 0
+  fi
 
-    if [[ -z "$CODEC" || -z "$DIMENSIONS" || -z "$DURATION" || "$DURATION" == "null" ]]; then
-        printf "ERROR: Incomplete structural stream descriptors on file %s\n" "$VIDEO_FILE" >&2
-        return 1
-    fi
+  if ! ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1 "$src_file" | grep -q "video"; then
+    append_report_row "$src_file" "" "" "scan" "skipped_no_video_stream" "" "" "" "" "" "" "no video stream"
+    return 0
+  fi
 
-    case "${CODEC,,}" in
-        av1|hevc|vp9)
-            printf "SKIP: '%s' is already utilizing a highly efficient modern codec (%s).\n" "$VIDEO_FILE" "$CODEC"
-            return 0
-            ;;
-        *)
-            print_verbose "Codec '$CODEC' requires modernization processing."
-            ;;
-    esac
+  if ! fields="$(get_video_info_fields "$src_file")"; then
+    printf "ERROR: metadata extraction failed for '%s'\n" "$src_file" >&2
+    append_report_row "$src_file" "" "" "scan" "error" "" "" "" "" "" "" "metadata extraction failed"
+    return 1
+  fi
 
-    printf "\nProcessing File: %s\nCodec Profile: %s (%s) | Track Duration: %s seconds\n" "$VIDEO_FILE" "$CODEC" "$DIMENSIONS" "$DURATION"
-    reencode_video "$VIDEO_FILE" "$DIMENSIONS" "$DURATION"
+  codec="${fields%%|*}"
+  fields="${fields#*|}"
+  dimensions="${fields%%|*}"
+  duration="${fields##*|}"
+
+  case "${codec,,}" in
+    av1|hevc|vp9)
+      printf "SKIP: '%s' already modern codec (%s)\n" "$src_file" "$codec"
+      append_report_row "$src_file" "$codec" "$duration" "scan" "skipped_modern_codec" "" "" "" "" "" "" "codec already efficient"
+      return 0
+      ;;
+  esac
+
+  print_verbose "Processing: $src_file | codec=$codec | dim=$dimensions | duration=$duration"
+  reencode_video "$src_file" "$dimensions" "$duration" "$codec"
 }
 
 main() {
-    local mime_type
-    parse_options "$@"
-    if (( ${#POSITIONAL_ARGS[@]} > 0 )); then
-        SOURCE_DIR="${POSITIONAL_ARGS[0]}"
-    fi
+  parse_options "$@"
 
-    while IFS= read -r -d '' SRC_FILE; do
-        local TARGET_MKV="${SRC_FILE%.*}.mkv"
+  if (( ${#POSITIONAL_ARGS[@]} > 0 )); then
+    SOURCE_DIR="${POSITIONAL_ARGS[0]}"
+  fi
 
-        if [[ -f "$TARGET_MKV" ]]; then
-            if [[ "$SRC_FILE" == "$TARGET_MKV" ]]; then
-                print_verbose "Evaluating existing Matroska container: '$SRC_FILE'"
-            else
-                printf "SKIP: Target master asset '%s' already exists. Assuming prior processing.\n" "$TARGET_MKV"
-                continue
-            fi
-        fi
+  require_command ffmpeg ffprobe jq bc file stat mktemp find grep awk cut tee
 
-        mime_type=$(file --brief --mime-type "$SRC_FILE")
-        if [[ ! "$mime_type" == video/* ]]; then
-            continue
-        fi
-        if ! ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1 "$SRC_FILE" | grep --quiet "video"; then
-            continue
-        fi
+  init_report
 
-        get_video_info "$SRC_FILE"
-    done < <(find "$SOURCE_DIR" -type f -print0)
+  while IFS= read -r -d '' src_file; do
+    process_file "$src_file"
+  done < <(find "$SOURCE_DIR" -type f -print0)
 }
 
 main "$@"
