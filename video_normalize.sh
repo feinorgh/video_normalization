@@ -394,7 +394,9 @@ process_file() {
     local src_file="$1"
     local mime_type target_mkv codec dimensions duration fields
 
-    if [[ "${src_file,,}" == *.mkv ]]; then
+    if [[ "${src_file,,}" == *.normalized.mkv ]]; then
+        target_mkv="$src_file"
+    elif [[ "${src_file,,}" == *.mkv ]]; then
         target_mkv="${src_file%.*}.normalized.mkv"
     else
         target_mkv="${src_file%.*}.mkv"
