@@ -384,9 +384,9 @@ reencode_video() {
         return 1
     fi
 
-    if ffprobe -v error -show_entries format=duration "$final_output" >/dev/null 2>&1; then
-        original_full_size="$(stat --format "%s" "$video_file")"
-        final_encoded_size="$(stat --format "%s" "$final_output")"
+    if ffprobe -v error -show_entries format=duration "${final_output/#-/./-}" >/dev/null 2>&1; then
+        original_full_size="$(stat --format "%s" -- "$video_file")"
+        final_encoded_size="$(stat --format "%s" -- "$final_output")"
         final_ratio="$(echo "scale=4; $final_encoded_size / $original_full_size" | bc --mathlib)"
         printf "SUCCESS: encoded '%s' ratio=%s\n" "$final_output" "$final_ratio"
         append_report_row "$video_file" "$codec" "$duration" "full" "encoded" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "$final_ratio" "success"
