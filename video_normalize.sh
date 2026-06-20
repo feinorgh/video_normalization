@@ -175,7 +175,7 @@ parse_options() {
             --start-crf)
                 [[ $# -lt 2 ]] && { printf "ERROR: --start-crf requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --start-crf: %s\n" "$2" >&2; exit 1; }
-                START_CRF="$2"
+                START_CRF=$((10#$2))
                 shift 2
                 ;;
             --min-crf)
