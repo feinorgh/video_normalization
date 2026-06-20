@@ -31,7 +31,6 @@ Required commands:
 - `grep`
 - `awk`
 - `cut`
-- `tee`
 - `basename`
 - `dirname`
 - `mkdir`
