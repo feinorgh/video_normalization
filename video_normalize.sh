@@ -181,7 +181,7 @@ parse_options() {
             --min-crf)
                 [[ $# -lt 2 ]] && { printf "ERROR: --min-crf requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --min-crf: %s\n" "$2" >&2; exit 1; }
-                MIN_CRF="$2"
+                MIN_CRF=$((10#$2))
                 shift 2
                 ;;
             --preset)
