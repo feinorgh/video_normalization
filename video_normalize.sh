@@ -379,7 +379,7 @@ reencode_video() {
         -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
         -fps_mode passthrough \
         -c:a libopus -b:a 128k -vbr on -af aresample=async=1 \
-        "$final_output" >> "$log_file" 2>&1; then
+        "${final_output/#-/./-}" >> "$log_file" 2>&1; then
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "full encode failed"
         return 1
     fi
