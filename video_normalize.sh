@@ -90,8 +90,12 @@ append_report_row() {
     local final_ratio="${11}"
     local message="${12}"
 
-    source_file=${source_file//\"/\"\"}
-    message=${message//\"/\"\"}
+    source_file=${source_file//$'\r'/ }
+    source_file=${source_file//$'\n'/ }
+    source_file=${source_file//"/""}
+    message=${message//$'\r'/ }
+    message=${message//$'\n'/ }
+    message=${message//"/""}
 
     printf "\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n" \
         "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
