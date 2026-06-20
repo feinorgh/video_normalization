@@ -194,6 +194,11 @@ parse_options() {
                 START_PRESET=$((10#$2))
                 shift 2
                 ;;
+            --)
+                shift
+                POSITIONAL_ARGS+=("$@")
+                break
+                ;;
             --*|-*)
                 printf "ERROR: Unknown option '%s'\n" "$1" >&2
                 exit 1
