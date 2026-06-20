@@ -97,7 +97,7 @@ If `SOURCE_DIR` is omitted, defaults to current directory (`.`).
 
 1. Discover files recursively under source directory.
 2. Keep only files with `video/*` MIME and a valid video stream.
-3. Skip if output `*.mkv` already exists (for non-MKV sources).
+3. Skip if the target output already exists (`*.mkv` for non-MKV sources, `*.normalized.mkv` for `.mkv` sources).
 4. Skip if source codec is already efficient (`av1`, `hevc`, `vp9`).
 5. Extract reference and baseline sample clips.
 6. Encode sample with AV1 and iterate CRF/preset until quality gates pass (or CRF floor reached).
