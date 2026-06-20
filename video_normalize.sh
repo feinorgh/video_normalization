@@ -209,9 +209,12 @@ parse_options() {
 
 get_video_info_fields() {
     local video_file="$1"
+    local safe_video_file="$video_file"
     local video_info dimensions codec duration
 
-    if ! video_info="$(ffprobe -loglevel error -select_streams v:0 -output_format json -show_entries stream "$video_file")"; then
+    [[ "$safe_video_file" == -* ]] && safe_video_file="./$safe_video_file"
+
+    if ! video_info="$(ffprobe -loglevel error -select_streams v:0 -output_format json -show_entries stream "$safe_video_file")"; then
         return 1
     fi
 
@@ -224,7 +227,7 @@ get_video_info_fields() {
     [[ "$duration" == "null" ]] && duration=""
 
     if [[ -z "$duration" || "$duration" == "null" ]]; then
-        duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$video_file" | jq --raw-output '.format.duration' || true)"
+        duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$safe_video_file" | jq --raw-output '.format.duration' || true)"
     fi
 
     if [[ -z "$codec" || -z "$duration" || "$duration" == "null" ]] || ! is_number "$duration"; then
