@@ -226,11 +226,13 @@ get_video_info_fields() {
     [[ "$codec" == "null" ]] && codec=""
     [[ "$duration" == "null" ]] && duration=""
 
-    if [[ -z "$duration" || "$duration" == "null" ]]; then
+    if [[ -z "$duration" || "$duration" == "null" ]] || ! is_number "$duration"; then
         duration="$(ffprobe -loglevel error -show_entries format=duration -output_format json "$safe_video_file" | jq --raw-output '.format.duration' || true)"
     fi
 
-    if [[ -z "$codec" || -z "$duration" || "$duration" == "null" ]] || ! is_number "$duration"; then
+    [[ "$duration" == "null" ]] && duration=""
+
+    if [[ -z "$codec" || -z "$duration" ]] || ! is_number "$duration"; then
         return 1
     fi
 
