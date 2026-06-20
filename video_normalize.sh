@@ -271,7 +271,7 @@ reencode_video() {
         print_verbose "INFO: Duration <= 60s, using full timeline as sample."
     fi
 
-    if ! ffmpeg "${ffmpeg_args[@]}" -i "$video_file" -c:v libx264 -crf 0 -preset ultrafast -an "$work_dir/reference/$video_file_name" >> "$log_file" 2>&1; then
+    if ! ffmpeg "${ffmpeg_args[@]}" -i "${video_file/#-/./-}" -c:v libx264 -crf 0 -preset ultrafast -an "$work_dir/reference/$video_file_name" >> "$log_file" 2>&1; then
         append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "reference clip extraction failed"
         return 1
     fi
