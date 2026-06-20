@@ -374,7 +374,7 @@ reencode_video() {
     fi
     if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
         -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
-        -i "$video_file" \
+        -i "${video_file/#-/./-}" \
         -c:v libsvtav1 -crf "$crf" -preset "$preset" -pix_fmt "$PIX_FMT" \
         -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
         -fps_mode passthrough \
