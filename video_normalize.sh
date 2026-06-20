@@ -276,7 +276,7 @@ reencode_video() {
         return 1
     fi
 
-    if ! ffmpeg "${ffmpeg_args[@]}" -i "$video_file" -c:v copy -an "$work_dir/original/$video_file_name" >> "$log_file" 2>&1; then
+    if ! ffmpeg "${ffmpeg_args[@]}" -i "${video_file/#-/./-}" -c:v copy -an "$work_dir/original/$video_file_name" >> "$log_file" 2>&1; then
         append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "baseline clip extraction failed"
         return 1
     fi
