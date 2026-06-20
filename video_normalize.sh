@@ -187,7 +187,7 @@ parse_options() {
             --preset)
                 [[ $# -lt 2 ]] && { printf "ERROR: --preset requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --preset: %s\n" "$2" >&2; exit 1; }
-                START_PRESET="$2"
+                START_PRESET=$((10#$2))
                 shift 2
                 ;;
             --*|-*)
