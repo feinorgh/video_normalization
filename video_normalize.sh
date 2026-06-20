@@ -422,7 +422,10 @@ process_file() {
         return 0
     fi
 
-    if ! ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1 "$src_file" | grep -q "video"; then
+    local safe_src_file="$src_file"
+    [[ "$safe_src_file" == -* ]] && safe_src_file="./$safe_src_file"
+
+    if ! ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1 "$safe_src_file" | grep -q "video"; then
         append_report_row "$src_file" "" "" "scan" "skipped_no_video_stream" "" "" "" "" "" "" "no video stream"
         return 0
     fi
