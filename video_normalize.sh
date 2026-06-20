@@ -295,25 +295,24 @@ reencode_video() {
             return 1
         fi
 
-        local ssim_log vmaf_log
-        if ! ssim_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+        if ! ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
             -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]ssim" \
-            -f null - 2>&1 | tee -a "$log_file")"; then
+            -f null - >"$work_dir/ssim_eval.log" 2>&1; then
             append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "ssim run failed"
             return 1
         fi
 
-        if ! vmaf_log="$(ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+        if ! ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
             -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" \
-            -f null - 2>&1 | tee -a "$log_file")"; then
+            -f null - >"$work_dir/vmaf_eval.log" 2>&1; then
             append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "vmaf run failed"
             return 1
         fi
 
-        ssim_score="$(echo "$ssim_log" | grep -oE 'All:[0-9.]+' | cut -d':' -f2 || true)"
-        vmaf_score="$(echo "$vmaf_log" | grep -oE 'VMAF score: [0-9.]+' | awk '{print $3}' || true)"
+        ssim_score="$(grep -oE 'All:[0-9.]+' "$work_dir/ssim_eval.log" | cut -d':' -f2 || true)"
+        vmaf_score="$(grep -oE 'VMAF score: [0-9.]+' "$work_dir/vmaf_eval.log" | awk '{print $3}' || true)"
 
         if [[ -z "$ssim_score" || -z "$vmaf_score" ]] || \
            ! [[ "$ssim_score" =~ ^[0-9]+([.][0-9]+)?$ && "$vmaf_score" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
