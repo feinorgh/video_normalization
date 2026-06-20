@@ -415,15 +415,15 @@ process_file() {
         target_mkv="${src_file%.*}.mkv"
     fi
 
-    if [[ -f "$target_mkv" ]]; then
-        printf "SKIP: target exists '%s'\n" "$target_mkv"
-        append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
-        return 0
-    fi
-
     mime_type="$(file --brief --mime-type -- "$src_file")"
     if [[ ! "$mime_type" == video/* ]]; then
         append_report_row "$src_file" "" "" "scan" "skipped_nonvideo" "" "" "" "" "" "" "mime type not video"
+        return 0
+    fi
+
+    if [[ -f "$target_mkv" ]]; then
+        printf "SKIP: target exists '%s'\n" "$target_mkv"
+        append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
         return 0
     fi
 
