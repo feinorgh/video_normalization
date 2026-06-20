@@ -35,6 +35,7 @@ Required commands:
 - `basename`
 - `dirname`
 - `mkdir`
+- `rm`
 - `cat`
 - GNU `stat` (`--format` support)
 
