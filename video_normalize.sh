@@ -314,7 +314,7 @@ reencode_video() {
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]ssim" \
             -f null - 2>&1 | tee -a "$log_file" >"$work_dir/ssim_eval.log"; then
             append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "ssim run failed"
-            printf "SSIM Evaluation Error:" >&2
+            printf "SSIM Evaluation Error:\n" >&2
             cat "$work_dir/ssim_eval.log" >&2
             return 1
         fi
