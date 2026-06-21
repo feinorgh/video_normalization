@@ -270,7 +270,7 @@ reencode_video() {
     mkdir "$work_dir/reference" "$work_dir/original"
 
     local -a ffmpeg_args
-    ffmpeg_args=(-hide_banner -loglevel verbose -nostats -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err)
+    ffmpeg_args=(-nostdin -hide_banner -loglevel verbose -nostats -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err)
 
     if [[ "$(echo "$duration <= 60.0" | bc --mathlib)" -ne 1 ]]; then
         local middle_point clip_start
