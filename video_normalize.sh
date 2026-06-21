@@ -171,7 +171,7 @@ parse_options() {
             --clip-length)
                 [[ $# -lt 2 ]] && { printf "ERROR: --clip-length requires a value\n" >&2; exit 1; }
                 is_number "$2" || { printf "ERROR: Invalid --clip-length: %s\n" "$2" >&2; exit 1; }
-                [[ "$2" =~ ^0+([.]0+)?$ ]] && { printf "ERROR: --clip-length must be > 0\n" >&2; exit 1; }
+                [[ "$2" =~ ^0*([.]0*)?$ ]] && { printf "ERROR: --clip-length must be > 0\n" >&2; exit 1; }
                 CLIP_LENGTH="$2"
                 shift 2
                 ;;
