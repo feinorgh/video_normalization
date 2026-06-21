@@ -92,8 +92,10 @@ append_report_row() {
 
     source_file=${source_file//$'\r'/ }
     source_file=${source_file//$'\n'/ }
+    source_file=${source_file//\"/ }
     message=${message//$'\r'/ }
     message=${message//$'\n'/ }
+    message=${message//\"/ }
 
     printf "\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n" \
         "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
