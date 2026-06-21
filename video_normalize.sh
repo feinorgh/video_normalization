@@ -30,23 +30,22 @@ CURRENT_LOG_FILE=""
 CURRENT_WORK_DIR=""
 
 show_help() {
-    cat <<'EOF'
-Usage:
-    ./video_normalize.sh [options] [SOURCE_DIR]
-
-Options:
-    -h, --help                      Show this help and exit
-    -v, --verbose                   Enable verbose output
-    --dry-run                       Analyze but do not write final outputs
-    --report <path>                 Write CSV report to file
-    --vmaf-threshold <float>        Default: 93.0
-    --ssim-threshold <float>        Default: 0.98
-    --size-ratio-threshold <float>  Default: 0.80
-    --clip-length <seconds>         Default: 30
-    --start-crf <int>               Default: 32
-    --min-crf <int>                 Default: 18
-    --preset <int>                  Default: 4
-EOF
+    printf '%s\n' \
+        'Usage:' \
+        '    ./video_normalize.sh [options] [SOURCE_DIR]' \
+        '' \
+        'Options:' \
+        '    -h, --help                      Show this help and exit' \
+        '    -v, --verbose                   Enable verbose output' \
+        '    --dry-run                       Analyze but do not write final outputs' \
+        '    --report <path>                 Write CSV report to file' \
+        '    --vmaf-threshold <float>        Default: 93.0' \
+        '    --ssim-threshold <float>        Default: 0.98' \
+        '    --size-ratio-threshold <float>  Default: 0.80' \
+        '    --clip-length <seconds>         Default: 30' \
+        '    --start-crf <int>               Default: 32' \
+        '    --min-crf <int>                 Default: 18' \
+        '    --preset <int>                  Default: 4'
 }
 
 print_verbose() {
