@@ -481,11 +481,16 @@ main() {
 
     init_report
 
+    local error_occurred=0
     while IFS= read -r -d '' src_file; do
         if ! process_file "$src_file"; then
             printf "WARNING: Could not process '%s'\n" "$src_file"
+            error_occurred=1
         fi
     done < <(find -- "$SOURCE_DIR" -type f -print0)
+    if [[ $error_occurred == 1 ]]; then
+        return 1
+    fi
 }
 
 main "$@"
