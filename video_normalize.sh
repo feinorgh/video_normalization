@@ -474,7 +474,7 @@ main() {
         SOURCE_DIR="${POSITIONAL_ARGS[0]}"
     fi
 
-    require_command ffmpeg ffprobe jq bc file stat mktemp find grep awk cut basename dirname mkdir cat rm
+    require_command ffmpeg ffprobe jq bc file stat mktemp find grep awk cut basename dirname mkdir cat rm tee
 
     init_report
 
