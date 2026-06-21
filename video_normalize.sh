@@ -96,6 +96,10 @@ append_report_row() {
     message=${message//$'\n'/ }
     message=${message//\"/ }
 
+    # Prevent CSV/spreadsheet formula injection when opened in Excel/Sheets
+    [[ "$source_file" =~ ^[=+\-@] ]] && source_file="'$source_file"
+    [[ "$message" =~ ^[=+\-@] ]] && message="'$message"
+
     printf "\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n" \
         "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
         "$vmaf" "$ssim" "$sample_ratio" "$final_ratio" "$message" >> "$REPORT_PATH"
