@@ -309,7 +309,7 @@ reencode_video() {
         if ! ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
             -i "$work_dir/candidate.mkv" -i "$work_dir/reference/$video_file_name" \
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]ssim" \
-            -f null - >"$work_dir/ssim_eval.log" 2>&1; then
+            -f null - 2>&1 | tee -a "$log_file" >"$work_dir/ssim_eval.log"; then
             append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "ssim run failed"
             printf "SSIM Evaluation Error:" >&2
             cat "$work_dir/ssim_eval.log" >&2
