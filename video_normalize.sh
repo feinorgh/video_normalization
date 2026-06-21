@@ -467,7 +467,14 @@ process_file() {
     esac
 
     print_verbose "Processing: $src_file | codec=$codec | dim=$dimensions | duration=$duration"
-    reencode_video "$src_file" "$duration" "$codec"
+    if ! reencode_video "$src_file" "$duration" "$codec"; then
+        if [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]]; then
+            rm -rf -- "${CURRENT_WORK_DIR}"
+        fi
+        CURRENT_WORK_DIR=""
+        CURRENT_LOG_FILE=""
+        return 1
+    fi
 }
 
 main() {
