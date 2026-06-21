@@ -36,6 +36,7 @@ Required commands:
 - `mkdir`
 - `rm`
 - `cat`
+- `tee`
 - GNU `stat` (`--format` support)
 
 ### FFmpeg capability requirements
