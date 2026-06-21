@@ -324,7 +324,7 @@ reencode_video() {
             -filter_complex "[0:v]setpts=N,setsar=1,format=${PIX_FMT}[distorted];[1:v]setpts=N,setsar=1,format=${PIX_FMT}[reference];[distorted][reference]libvmaf=model=version=vmaf_v0.6.1" \
             -f null - 2>&1 | tee -a "$log_file" >"$work_dir/vmaf_eval.log"; then
             append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "vmaf run failed"
-            printf "VMAF Evaluation Error:" >&2
+            printf "VMAF Evaluation Error:\n" >&2
             cat "$work_dir/vmaf_eval.log" >&2
             return 1
         fi
