@@ -482,7 +482,9 @@ main() {
     init_report
 
     while IFS= read -r -d '' src_file; do
-        process_file "$src_file"
+        if ! process_file "$src_file"; then
+            printf "WARNING: Could not process '%s'\n" "$src_file"
+        fi
     done < <(find -- "$SOURCE_DIR" -type f -print0)
 }
 
