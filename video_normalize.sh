@@ -91,10 +91,10 @@ append_report_row() {
 
     source_file=${source_file//$'\r'/ }
     source_file=${source_file//$'\n'/ }
-    source_file=${source_file//\"/ }
+    source_file=${source_file//\"/\"\"}
     message=${message//$'\r'/ }
     message=${message//$'\n'/ }
-    message=${message//\"/ }
+    message=${message//\"/\"\"}
 
     # Prevent CSV/spreadsheet formula injection when opened in Excel/Sheets
     [[ "$source_file" =~ ^[[:space:]]*[=+\-@] ]] && source_file="'$source_file"
