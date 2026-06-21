@@ -234,7 +234,7 @@ get_video_info_fields() {
     codec="$(echo "$video_info" | jq --raw-output '.streams[0].codec_name' || true)"
     duration="$(echo "$video_info" | jq --raw-output '.streams[0].duration' || true)"
 
-    [[ "$dimensions" == "nullxnull" ]] && dimensions=""
+[[ "$dimensions" == *"null"* ]] && dimensions=""
     [[ "$codec" == "null" ]] && codec=""
     [[ "$duration" == "null" ]] && duration=""
 
