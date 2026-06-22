@@ -471,9 +471,11 @@ process_file() {
 
     print_verbose "Processing: $src_file | codec=$codec | dim=$dimensions | duration=$duration"
     if ! reencode_video "$src_file" "$duration" "$codec"; then
-        if [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]]; then
-            rm -rf -- "${CURRENT_WORK_DIR}"
+        if [[ -n "${CURRENT_LOG_FILE:-}" && -f "${CURRENT_LOG_FILE}" ]]; then
+            printf "ERROR: processing failed for '%s'. execution log follows:\n" "$src_file" >&2
+            cat -- "${CURRENT_LOG_FILE}" >&2
         fi
+        [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]] && rm -rf -- "${CURRENT_WORK_DIR}"
         CURRENT_WORK_DIR=""
         CURRENT_LOG_FILE=""
         return 1
