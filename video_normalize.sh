@@ -307,6 +307,10 @@ reencode_video() {
 
     local original_size encoded_size size_ratio ssim_score vmaf_score
     original_size="$(stat --format "%s" "$work_dir/original/$video_file_name")"
+    if [[ $original_size -eq 0 ]]; then
+        printf "ERROR: Zero-sized video file '%s' found. Aborting.\n" "$work_dir/original/$video_file_name" >&2
+        return 1
+    fi
 
     local optimized=false
     while [[ "$optimized" == "false" ]]; do
