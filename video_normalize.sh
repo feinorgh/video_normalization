@@ -309,6 +309,10 @@ reencode_video() {
     original_size="$(stat --format "%s" "$work_dir/original/$video_file_name")"
     if [[ $original_size -eq 0 ]]; then
         printf "ERROR: Zero-sized video file '%s' found. Aborting.\n" "$work_dir/original/$video_file_name" >&2
+        append_report_row "$video_file" "$codec" "$duration" "sample" "error" "$crf" "$preset" "" "" "" "" "zero-sized baseline sample"
+        rm -rf -- "$work_dir"
+        CURRENT_WORK_DIR=""
+        CURRENT_LOG_FILE=""
         return 1
     fi
 
