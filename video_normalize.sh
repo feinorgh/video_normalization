@@ -112,7 +112,7 @@ append_report_row() {
     [[ "$status" =~ ^[[:space:]]*[=+\-@] ]] && status="'$status"
     [[ "$message" =~ ^[[:space:]]*[=+\-@] ]] && message="'$message"
 
-    printf "\"%s\",\"%s\",%s,\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,\"%s\"\n" \
+    printf '"%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s","%s"\n' \
         "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
         "$vmaf" "$ssim" "$sample_ratio" "$final_ratio" "$message" >> "$REPORT_PATH"
 }
