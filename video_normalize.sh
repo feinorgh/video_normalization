@@ -427,7 +427,10 @@ process_file() {
         target_mkv="${src_file%.*}.mkv"
     fi
 
-    mime_type="$(file --brief --mime-type -- "$src_file")"
+    if ! mime_type="$(file --brief --mime-type -- "$src_file" 2>/dev/null)"; then
+        append_report_row "$src_file" "" "" "scan" "error" "" "" "" "" "" "" "failed to detect mime type"
+        return 1
+    fi
     if [[ ! "$mime_type" == video/* ]]; then
         append_report_row "$src_file" "" "" "scan" "skipped_nonvideo" "" "" "" "" "" "" "mime type not video"
         return 0
