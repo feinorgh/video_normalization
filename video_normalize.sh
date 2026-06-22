@@ -126,6 +126,7 @@ init_report() {
     fi
     mkdir -p -- "$(dirname -- "$REPORT_PATH")" || { printf "ERROR: Could not create report directory for '%s'\n" "$REPORT_PATH" >&2; exit 1; }
     printf "source_file,codec,duration,action,status,crf,preset,vmaf,ssim,sample_ratio,final_ratio,message\n" > "$REPORT_PATH" || { printf "ERROR: Could not write report header to '%s'\n" "$REPORT_PATH" >&2; exit 1; }
+}
 
 cleanup() {
     local exit_code=$?
