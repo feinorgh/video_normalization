@@ -20,7 +20,7 @@ Re-encodes videos to [SVT-AV1](https://gitlab.com/AOMediaCodec/SVT-AV1) while pr
 
 Required commands:
 
-- `bash` (4+ recommended)
+- `bash` (4+ required)
 - `ffmpeg`
 - `ffprobe`
 - `jq`
