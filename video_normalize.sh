@@ -92,15 +92,27 @@ append_report_row() {
     source_file=${source_file//$'\r'/ }
     source_file=${source_file//$'\n'/ }
     source_file=${source_file//\"/\"\"}
+    codec=${codec//$'\r'/ }
+    codec=${codec//$'\n'/ }
+    codec=${codec//\"/\"\"}
+    action=${action//$'\r'/ }
+    action=${action//$'\n'/ }
+    action=${action//\"/\"\"}
+    status=${status//$'\r'/ }
+    status=${status//$'\n'/ }
+    status=${status//\"/\"\"}
     message=${message//$'\r'/ }
     message=${message//$'\n'/ }
     message=${message//\"/\"\"}
 
     # Prevent CSV/spreadsheet formula injection when opened in Excel/Sheets
     [[ "$source_file" =~ ^[[:space:]]*[=+\-@] ]] && source_file="'$source_file"
+    [[ "$codec" =~ ^[[:space:]]*[=+\-@] ]] && codec="'$codec"
+    [[ "$action" =~ ^[[:space:]]*[=+\-@] ]] && action="'$action"
+    [[ "$status" =~ ^[[:space:]]*[=+\-@] ]] && status="'$status"
     [[ "$message" =~ ^[[:space:]]*[=+\-@] ]] && message="'$message"
 
-    printf "\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"\n" \
+    printf "\"%s\",\"%s\",%s,\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,\"%s\"\n" \
         "$source_file" "$codec" "$duration" "$action" "$status" "$crf" "$preset" \
         "$vmaf" "$ssim" "$sample_ratio" "$final_ratio" "$message" >> "$REPORT_PATH"
 }
