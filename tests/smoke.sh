@@ -47,11 +47,11 @@ else
     fail "report header missing"
 fi
 
-# 6) Corrupted output detection code is present (syntax check)
-if grep -q 'ffprobe -v error.*mkv' "$SCRIPT" && grep -q 'rm -f.*final_output' "$SCRIPT"; then
-    pass "corruption detection and cleanup code present"
+# 6) Atomic encode and symlink protection code is present
+if grep -q 'mv -n.*temp_output.*final_output' "$SCRIPT" && grep -q 'symlink.*security risk' "$SCRIPT"; then
+    pass "atomic encode and symlink protection present"
 else
-    fail "corruption detection code missing from script"
+    fail "atomic encode or symlink protection code missing from script"
 fi
 
 printf "\nAll smoke checks passed.\n"

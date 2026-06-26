@@ -28,6 +28,7 @@ REPORT_PATH=""
 DIAGNOSTICS_DUMPED=0
 CURRENT_LOG_FILE=""
 CURRENT_WORK_DIR=""
+CURRENT_TEMP_OUTPUT=""
 
 show_help() {
     printf '%s\n' \
@@ -144,6 +145,11 @@ cleanup() {
             DIAGNOSTICS_DUMPED=1
         fi
         rm -rf -- "${CURRENT_WORK_DIR}"
+    fi
+
+    if [[ -n "${CURRENT_TEMP_OUTPUT:-}" && -f "${CURRENT_TEMP_OUTPUT}" ]]; then
+        printf "Cleaning up orphaned temp file: %s\n" "$CURRENT_TEMP_OUTPUT" >&2
+        rm -f -- "${CURRENT_TEMP_OUTPUT}"
     fi
 }
 
@@ -405,38 +411,69 @@ reencode_video() {
     fi
 
     local final_output original_full_size final_encoded_size final_ratio
+    local final_dir temp_output
 
     if [[ "${video_file,,}" == *.mkv ]]; then
         final_output="${video_file%.*}.normalized.mkv"
     else
         final_output="${video_file%.*}.mkv"
     fi
-    if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats -y \
+
+    final_dir="$(dirname -- "$final_output")"
+    temp_output="${final_dir}/.encode_temp_$$.mkv"
+    CURRENT_TEMP_OUTPUT="$temp_output"
+
+    # Encode to temp file in final output directory (no -y, atomic rename later)
+    if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
         -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
         -i "${video_file/#-/./-}" \
         -c:v libsvtav1 -crf "$crf" -preset "$preset" -pix_fmt "$PIX_FMT" \
         -svtav1-params tune=$SVT_AV1_TUNE:film-grain="$FILM_GRAIN":lp=0 \
         -fps_mode passthrough \
         -c:a libopus -b:a 128k -vbr on -af aresample=async=1 \
-        "${final_output/#-/./-}" >> "$log_file" 2>&1; then
+        "$temp_output" >> "$log_file" 2>&1; then
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "full encode failed"
+        rm -f -- "$temp_output"
+        CURRENT_TEMP_OUTPUT=""
         return 1
     fi
 
-    if ffprobe -v error -show_entries format=duration "${final_output/#-/./-}" >/dev/null 2>&1; then
-        original_full_size="$(stat --format "%s" -- "$video_file")"
-        final_encoded_size="$(stat --format "%s" -- "$final_output")"
-        final_ratio="$(echo "scale=4; $final_encoded_size / $original_full_size" | bc --mathlib)"
-        printf "SUCCESS: encoded '%s' ratio=%s\n" "$final_output" "$final_ratio"
-        append_report_row "$video_file" "$codec" "$duration" "full" "encoded" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "$final_ratio" "success"
-        rm -rf -- "$work_dir"
-        CURRENT_WORK_DIR=""
-        CURRENT_LOG_FILE=""
-    else
+    # Verify temp output integrity
+    if ! ffprobe -v error -show_entries format=duration "$temp_output" >/dev/null 2>&1; then
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "final output integrity check failed"
-        rm -f -- "${final_output/#-/./-}"
+        rm -f -- "$temp_output"
+        CURRENT_TEMP_OUTPUT=""
         return 1
     fi
+
+    # Security: reject symlink at final path (TOCTOU mitigation)
+    if [[ -L "$final_output" ]]; then
+        printf "ERROR: target path is a symlink (security risk): %s\n" "$final_output" >&2
+        append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "target is symlink (blocked for safety)"
+        rm -f -- "$temp_output"
+        CURRENT_TEMP_OUTPUT=""
+        return 1
+    fi
+
+    # Atomically move temp to final (fails if target exists, atomic on same filesystem)
+    if ! mv -n -- "$temp_output" "$final_output"; then
+        printf "ERROR: Could not move temp to final output (target exists?): %s\n" "$final_output" >&2
+        append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "atomic move failed (target exists or permission denied)"
+        rm -f -- "$temp_output"
+        CURRENT_TEMP_OUTPUT=""
+        return 1
+    fi
+
+    # Success: get final metrics and report
+    original_full_size="$(stat --format "%s" -- "$video_file")"
+    final_encoded_size="$(stat --format "%s" -- "$final_output")"
+    final_ratio="$(echo "scale=4; $final_encoded_size / $original_full_size" | bc --mathlib)"
+    printf "SUCCESS: encoded '%s' ratio=%s\n" "$final_output" "$final_ratio"
+    append_report_row "$video_file" "$codec" "$duration" "full" "encoded" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "$final_ratio" "success"
+    rm -rf -- "$work_dir"
+    CURRENT_WORK_DIR=""
+    CURRENT_LOG_FILE=""
+    CURRENT_TEMP_OUTPUT=""
 }
 
 process_file() {
