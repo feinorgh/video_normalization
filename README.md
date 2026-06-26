@@ -122,6 +122,9 @@ SVT-AV1 requires a reasonably modern CPU with at least AVX2 support. See https:/
 
 Audio is automatically reencoded to Opus, i.e. *it is not preserved as-is*.
 
+**Concurrency:** Multiple instances of this script cannot safely run on the same source directory at the same time. 
+Each instance should operate on separate directories to avoid conflicts and ensure correct encoding output.
+
 ## Exit Codes
 
 0. Success or all files skipped
