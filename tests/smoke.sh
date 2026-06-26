@@ -47,4 +47,11 @@ else
     fail "report header missing"
 fi
 
+# 6) Corrupted output detection code is present (syntax check)
+if grep -q 'ffprobe -v error.*mkv' "$SCRIPT" && grep -q 'rm -f.*final_output' "$SCRIPT"; then
+    pass "corruption detection and cleanup code present"
+else
+    fail "corruption detection code missing from script"
+fi
+
 printf "\nAll smoke checks passed.\n"

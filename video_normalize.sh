@@ -434,6 +434,7 @@ reencode_video() {
         CURRENT_LOG_FILE=""
     else
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "final output integrity check failed"
+        rm -f -- "${final_output/#-/./-}"
         return 1
     fi
 }
@@ -460,9 +461,14 @@ process_file() {
     fi
 
     if [[ -f "$target_mkv" ]]; then
-        printf "SKIP: target exists '%s'\n" "$target_mkv"
-        append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
-        return 0
+        if ffprobe -v error "$target_mkv" >/dev/null 2>&1; then
+            printf "SKIP: target exists '%s'\n" "$target_mkv"
+            append_report_row "$src_file" "" "" "scan" "skipped_existing_output" "" "" "" "" "" "" "target output exists"
+            return 0
+        else
+            printf "WARNING: target exists but is corrupted/invalid: '%s' (will retry)\n" "$target_mkv" >&2
+            rm -f -- "$target_mkv"
+        fi
     fi
 
     local safe_src_file="$src_file"
