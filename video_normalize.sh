@@ -67,6 +67,39 @@ require_command() {
     done
 }
 
+check_ffmpeg_encoders() {
+    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libsvtav1.*encoder'; then
+        printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
+        printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
+        exit 1
+    fi
+    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libopus.*encoder'; then
+        printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
+        printf "Please install ffmpeg with libopus enabled\n" >&2
+        exit 1
+    fi
+}
+
+check_ffmpeg_filters() {
+    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'ssim'; then
+        printf "ERROR: ffmpeg built without SSIM filter support\n" >&2
+        exit 1
+    fi
+    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'libvmaf'; then
+        printf "ERROR: ffmpeg built without VMAF filter support\n" >&2
+        exit 1
+    fi
+}
+
+check_vmaf_model() {
+    local model_path="/usr/share/vmaf/model/vmaf_v0.6.1.json"
+    if [[ ! -f "$model_path" ]]; then
+        printf "ERROR: VMAF model file not found: %s\n" "$model_path" >&2
+        printf "Please install libvmaf package with model data files\n" >&2
+        exit 1
+    fi
+}
+
 is_number() {
     [[ "$1" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]
 }
@@ -180,18 +213,30 @@ parse_options() {
             --vmaf-threshold)
                 [[ $# -lt 2 ]] && { printf "ERROR: --vmaf-threshold requires a value\n" >&2; exit 1; }
                 is_number "$2" || { printf "ERROR: Invalid --vmaf-threshold: %s\n" "$2" >&2; exit 1; }
+                if (( $(echo "$2 < 0 || $2 > 100" | bc --mathlib) )); then
+                    printf "ERROR: --vmaf-threshold must be between 0 and 100, got %s\n" "$2" >&2
+                    exit 1
+                fi
                 VMAF_THRESHOLD="$2"
                 shift 2
                 ;;
             --ssim-threshold)
                 [[ $# -lt 2 ]] && { printf "ERROR: --ssim-threshold requires a value\n" >&2; exit 1; }
                 is_number "$2" || { printf "ERROR: Invalid --ssim-threshold: %s\n" "$2" >&2; exit 1; }
+                if (( $(echo "$2 < 0 || $2 > 1" | bc --mathlib) )); then
+                    printf "ERROR: --ssim-threshold must be between 0 and 1, got %s\n" "$2" >&2
+                    exit 1
+                fi
                 SSIM_THRESHOLD="$2"
                 shift 2
                 ;;
             --size-ratio-threshold)
                 [[ $# -lt 2 ]] && { printf "ERROR: --size-ratio-threshold requires a value\n" >&2; exit 1; }
                 is_number "$2" || { printf "ERROR: Invalid --size-ratio-threshold: %s\n" "$2" >&2; exit 1; }
+                if (( $(echo "$2 <= 0 || $2 > 5" | bc --mathlib) )); then
+                    printf "ERROR: --size-ratio-threshold must be between 0 (exclusive) and 5, got %s\n" "$2" >&2
+                    exit 1
+                fi
                 SIZE_RATIO_THRESHOLD="$2"
                 shift 2
                 ;;
@@ -206,18 +251,30 @@ parse_options() {
                 [[ $# -lt 2 ]] && { printf "ERROR: --start-crf requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --start-crf: %s\n" "$2" >&2; exit 1; }
                 START_CRF=$((10#$2))
+                if (( START_CRF < 0 || START_CRF > 63 )); then
+                    printf "ERROR: --start-crf must be between 0 and 63, got %d\n" "$START_CRF" >&2
+                    exit 1
+                fi
                 shift 2
                 ;;
             --min-crf)
                 [[ $# -lt 2 ]] && { printf "ERROR: --min-crf requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --min-crf: %s\n" "$2" >&2; exit 1; }
                 MIN_CRF=$((10#$2))
+                if (( MIN_CRF < 0 || MIN_CRF > 63 )); then
+                    printf "ERROR: --min-crf must be between 0 and 63, got %d\n" "$MIN_CRF" >&2
+                    exit 1
+                fi
                 shift 2
                 ;;
             --preset)
                 [[ $# -lt 2 ]] && { printf "ERROR: --preset requires a value\n" >&2; exit 1; }
                 is_int "$2" || { printf "ERROR: Invalid --preset: %s\n" "$2" >&2; exit 1; }
                 START_PRESET=$((10#$2))
+                if (( START_PRESET < 0 || START_PRESET > 8 )); then
+                    printf "ERROR: --preset must be between 0 and 8, got %d\n" "$START_PRESET" >&2
+                    exit 1
+                fi
                 shift 2
                 ;;
             --version)
@@ -426,7 +483,12 @@ reencode_video() {
     fi
 
     final_dir="$(dirname -- "$final_output")"
-    temp_output="${final_dir}/.encode_temp_$$.mkv"
+    # Use mktemp for secure, unpredictable temp file name (prevents symlink attacks)
+    temp_output=$(mktemp "${final_dir}/.encode_temp.XXXXXX.mkv") || {
+        printf "ERROR: Could not create temporary output file in '%s'\n" "$final_dir" >&2
+        append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "temp file creation failed"
+        return 1
+    }
     CURRENT_TEMP_OUTPUT="$temp_output"
 
     # Encode to temp file in final output directory (no -y, atomic rename later)
@@ -573,6 +635,13 @@ main() {
     if [[ ! -d "$SOURCE_DIR" ]]; then
         printf "ERROR: Source directory does not exists: %s\n" "$SOURCE_DIR" >&2
         exit 1
+    fi
+
+    # Pre-flight checks for encoders/filters only if not dry-run (actual encoding will happen)
+    if [[ $DRY_RUN -eq 0 ]]; then
+        check_ffmpeg_encoders
+        check_ffmpeg_filters
+        check_vmaf_model
     fi
 
     local error_occurred=0
