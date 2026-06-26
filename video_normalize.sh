@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+VERSION="1.0.0"
 SOURCE_DIR="."
 VERBOSE=0
 POSITIONAL_ARGS=()
@@ -46,7 +47,8 @@ show_help() {
         '    --clip-length <seconds>         Default: 30' \
         '    --start-crf <int>               Default: 32' \
         '    --min-crf <int>                 Default: 18' \
-        '    --preset <int>                  Default: 4'
+        '    --preset <int>                  Default: 4' \
+        '    --version                       Show the version number of this program'
 }
 
 print_verbose() {
@@ -217,6 +219,10 @@ parse_options() {
                 is_int "$2" || { printf "ERROR: Invalid --preset: %s\n" "$2" >&2; exit 1; }
                 START_PRESET=$((10#$2))
                 shift 2
+                ;;
+            --version)
+                printf "Video Normalizer Version %s\n" "$VERSION"
+                exit 0
                 ;;
             --)
                 shift
