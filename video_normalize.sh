@@ -521,13 +521,18 @@ main() {
 
     init_report
 
+    if [[ ! -d "$SOURCE_DIR" ]]; then
+        printf "ERROR: Source directory does not exists: %s\n" "$SOURCE_DIR" >&2
+        exit 1
+    fi
+
     local error_occurred=0
     while IFS= read -r -d '' src_file; do
         if ! process_file "$src_file"; then
             printf "WARNING: Could not process '%s'\n" "$src_file"
             error_occurred=1
         fi
-    done < <(find -- "$SOURCE_DIR" -type f -print0)
+    done < <(find -- "$SOURCE_DIR" -type f -print0 || { printf "ERROR: find failed\n" >&2; exit 1; })
     if [[ $error_occurred == 1 ]]; then
         return 1
     fi
