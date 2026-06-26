@@ -11,7 +11,7 @@ to find the optimal parameters while still preserving the perceptual quality by
 using an [SSIM](https://en.wikipedia.org/wiki/Structural_similarity_index_measure) score,
 and a [VMAF](https://en.wikipedia.org/wiki/Video_Multimethod_Assessment_Fusion) score, making
 sure it clears the requirements for preserved perceptual quality (i.e. you should not be able
-to noticy any quality loss).
+to notice any quality loss).
 
 Depending on the original codec, the size of the re-encoded file will in many cases be around
 50% of the original, sometimes less, and occasionally larger than the original.
@@ -19,7 +19,7 @@ Depending on the original codec, the size of the re-encoded file will in many ca
 In order not to waste time re-encoding files that do not gain significant size reductions,
 a threshold of 80% of the original file is measured against the sample clip.
 
-The script encodes all files in to the Matroska ([MKV](https://en.wikipedia.org/wiki/Matroska))
+The script encodes all files into the Matroska ([MKV](https://en.wikipedia.org/wiki/Matroska))
 container format, which is an open standard, flexible, and widely supported container format
 for most platforms.
 
@@ -45,7 +45,7 @@ The script relies on several other programs that need to be present on your syst
 
 ### ffmpeg
 
-[ffmpeg](https://www.ffmpeg.org) and [ffprobe](https://ffmpeg.org/ffprobe.html) is usually installable
+[ffmpeg](https://www.ffmpeg.org) and [ffprobe](https://ffmpeg.org/ffprobe.html) are usually installable
 as a package on most operating systems. It records, converts, and streams audio
 and video, and is what does the heavy work here.
 
@@ -72,7 +72,7 @@ This should give you a list like this:
 
 #### libvmaf
 
-[VMAF](https://github.com/Netflix/vmafi) is usually packaged as a C library, along with its datafiles. Normally,
+[VMAF](https://github.com/Netflix/vmaf) is usually packaged as a C library, along with its datafiles. Normally,
 the package maintainer for your OS should package these to a known location `/usr/share/vmaf/`, but if you have
 problems, you might need to refer to the documentation specific for your OS.
 
@@ -83,7 +83,7 @@ JSON processor.
 
 ### GNU Coreutils (or equivalent)
 
-GNU Coreutils is avaiable on most Linux distributions. Other operating systems, such as the BSD varieties,
+GNU Coreutils is available on most Linux distributions. Other operating systems, such as the BSD varieties,
 should have these tools too, and they _should_ be roughly compatible.
 
 * `stat`, `mktemp`, `cut`, `basename`, `dirname`, `mkdir`, `cat`, `rm`, and `tee`
@@ -118,7 +118,7 @@ take several minutes to evaluate just one 30 s clip from a file, and even longer
 During the encoding, you're likely to need roughly 2x extra disk space compared to the file you're re-encoding,
 but this may vary widely, again depending on the resolution and content.
 
-SVT-AV1 requires a reasonably modern CPU is highly recommended, with at least AVX2 suppport. See https://github.com/AliveTeam/SVT-AV1/blob/master/Docs/System-Requirements.md
+SVT-AV1 requires a reasonably modern CPU with at least AVX2 support. See https://github.com/AliveTeam/SVT-AV1/blob/master/Docs/System-Requirements.md
 
 Audio is automatically reencoded to Opus, i.e. *it is not preserved as-is*.
 
