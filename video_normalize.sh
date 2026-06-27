@@ -70,12 +70,12 @@ require_command() {
 }
 
 check_ffmpeg_encoders() {
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libsvtav1.*encoder'; then
+    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libopus.*encoder'; then
+    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libopus'; then
         printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
         printf "Please install ffmpeg with libopus enabled\n" >&2
         exit 1
