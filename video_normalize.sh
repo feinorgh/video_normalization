@@ -523,6 +523,9 @@ reencode_video() {
         append_report_row "$video_file" "$codec" "$duration" "full" "error" "$crf" "$preset" "$vmaf_score" "$ssim_score" "$size_ratio" "" "temp file creation failed"
         return 1
     }
+    # Remove the empty file created by mktemp - ffmpeg will create it fresh
+    # This preserves unpredictable naming while allowing ffmpeg to write without -y flag
+    rm -f -- "$temp_output"
     CURRENT_TEMP_OUTPUT="$temp_output"
 
     # Encode to temp file in final output directory (no -y, atomic rename later)
