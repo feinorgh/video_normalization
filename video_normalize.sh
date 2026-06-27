@@ -30,6 +30,9 @@ DIAGNOSTICS_DUMPED=0
 CURRENT_LOG_FILE=""
 CURRENT_WORK_DIR=""
 CURRENT_TEMP_OUTPUT=""
+FIND_PID=""
+FIND_OUTPUT_FILE=""
+INTERRUPTED=0
 
 show_help() {
     printf '%s\n' \
@@ -68,25 +71,49 @@ require_command() {
 }
 
 check_ffmpeg_encoders() {
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libsvtav1.*encoder'; then
+    local ffmpeg_encoders
+    ffmpeg_encoders=$(ffmpeg -hide_banner -nostdin -encoders 2>&1) || {
+        printf "ERROR: ffmpeg -encoders command itself failed\n" >&2
+        exit 1
+    }
+
+    # Check for SVT-AV1 encoder (word boundary match works across ffmpeg versions)
+    if ! printf '%s\n' "$ffmpeg_encoders" | grep -qw 'libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
+        printf "DEBUG: Available AV1 encoders:\n" >&2
+        printf '%s\n' "$ffmpeg_encoders" | grep -i av1 >&2 || printf "  (none)\n" >&2
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libopus.*encoder'; then
+    # Check for Opus encoder (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_encoders" | grep -qw 'libopus'; then
         printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
+        printf "DEBUG: Available Opus encoders:\n" >&2
+        printf '%s\n' "$ffmpeg_encoders" | grep -i opus >&2 || printf "  (none)\n" >&2
         printf "Please install ffmpeg with libopus enabled\n" >&2
         exit 1
     fi
 }
 
 check_ffmpeg_filters() {
-    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'ssim'; then
+    local ffmpeg_filters
+    ffmpeg_filters=$(ffmpeg -hide_banner -nostdin -filters 2>&1) || {
+        printf "ERROR: ffmpeg -filters command itself failed\n" >&2
+        exit 1
+    }
+
+    # Check for SSIM filter (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_filters" | grep -qw 'ssim'; then
         printf "ERROR: ffmpeg built without SSIM filter support\n" >&2
+        printf "DEBUG: Available filters (first 20):\n" >&2
+        printf '%s\n' "$ffmpeg_filters" | awk 'NR<=20' >&2
         exit 1
     fi
-    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'libvmaf'; then
+    # Check for VMAF filter (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_filters" | grep -qw 'libvmaf'; then
         printf "ERROR: ffmpeg built without VMAF filter support\n" >&2
+        printf "DEBUG: Available video measurement filters:\n" >&2
+        printf '%s\n' "$ffmpeg_filters" | grep -iE 'vmaf|psnr|ssim' >&2 || printf "  (none)\n" >&2
         exit 1
     fi
 }
@@ -166,6 +193,23 @@ init_report() {
 
 cleanup() {
     local exit_code=$?
+
+    # Set interrupt flag to signal main loop to stop
+    INTERRUPTED=1
+
+    # Kill find process if still running (handles Ctrl+C gracefully)
+    if [[ -n "$FIND_PID" ]] && kill -0 "$FIND_PID" 2>/dev/null; then
+        kill -TERM "$FIND_PID" 2>/dev/null || true
+        wait "$FIND_PID" 2>/dev/null || true
+    fi
+
+    FIND_PID=""
+
+    # Clean up find output temp file
+    if [[ -n "$FIND_OUTPUT_FILE" && -f "$FIND_OUTPUT_FILE" ]]; then
+        rm -f -- "$FIND_OUTPUT_FILE"
+    fi
+
     if [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]]; then
         if [[ $exit_code -ne 0 && $DIAGNOSTICS_DUMPED -eq 0 ]]; then
             printf "\n============================================================\n" >&2
@@ -491,8 +535,8 @@ reencode_video() {
     }
     CURRENT_TEMP_OUTPUT="$temp_output"
 
-    # Encode to temp file in final output directory (no -y, atomic rename later)
-    if ! SVT_LOG=1 ffmpeg -nostdin -hide_banner -loglevel verbose -nostats \
+    # Encode to temp file in final output directory (overwrite any existing file, atomic rename later)
+    if ! SVT_LOG=1 ffmpeg -y -nostdin -hide_banner -loglevel verbose -nostats \
         -fflags +genpts+igndts+discardcorrupt -err_detect ignore_err \
         -i "${video_file/#-/./-}" \
         -c:v libsvtav1 -crf "$crf" -preset "$preset" -pix_fmt "$PIX_FMT" \
@@ -645,12 +689,50 @@ main() {
     fi
 
     local error_occurred=0
+
+    # Start find in background to allow proper signal handling on Ctrl+C
+    FIND_OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/video_normalize.find.XXXXXX") || {
+        printf "ERROR: Could not create temp file for find output\n" >&2
+        return 1
+    }
+    find -- "$SOURCE_DIR" -type f -print0 > "$FIND_OUTPUT_FILE" &
+    FIND_PID=$!
+    if wait "$FIND_PID"; then
+        FIND_PID=""
+    else
+        local find_exit=$?
+        FIND_PID=""
+        if [[ $INTERRUPTED -eq 1 || $find_exit -eq 130 ]]; then
+            printf "\nInterrupted by user. Aborting.\n" >&2
+            return 130
+        fi
+        printf "ERROR: find command failed with exit code %d\n" "$find_exit" >&2
+        return 1
+    fi
+
+    # Read from find output file
     while IFS= read -r -d '' src_file; do
+        # Check if interrupted (Ctrl+C was pressed)
+        if [[ $INTERRUPTED -eq 1 ]]; then
+            echo "" >&2
+            printf "\nInterrupted by user. Aborting.\n" >&2
+            return 130
+        fi
+
         if ! process_file "$src_file"; then
             printf "WARNING: Could not process '%s'\n" "$src_file"
             error_occurred=1
         fi
-    done < <(find -- "$SOURCE_DIR" -type f -print0 || { printf "ERROR: find failed\n" >&2; exit 1; })
+    done < "$FIND_OUTPUT_FILE"
+
+    if [[ $INTERRUPTED -eq 1 ]]; then
+        printf "\nInterrupted by user. Aborting.\n" >&2
+        return 130
+    fi
+
+    rm -f -- "$FIND_OUTPUT_FILE"
+    FIND_OUTPUT_FILE=""
+
     if [[ $error_occurred == 1 ]]; then
         return 1
     fi
