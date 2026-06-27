@@ -697,6 +697,10 @@ main() {
     else
         local find_exit=$?
         FIND_PID=""
+        if [[ $INTERRUPTED -eq 1 || $find_exit -eq 130 ]]; then
+            printf "\nInterrupted by user. Aborting.\n" >&2
+            return 130
+        fi
         printf "ERROR: find command failed with exit code %d\n" "$find_exit" >&2
         return 1
     fi
