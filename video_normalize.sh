@@ -80,7 +80,7 @@ check_ffmpeg_encoders() {
     if ! printf '%s\n' "$ffmpeg_output" | grep -q 'encoders:.*libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
         printf "DEBUG: ffmpeg output contains:\n" >&2
-        printf '%s\n' "$ffmpeg_output" | grep -i av1 >&2
+        printf '%s\n' "$ffmpeg_output" | grep -i av1 >&2 || true
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
