@@ -30,6 +30,8 @@ DIAGNOSTICS_DUMPED=0
 CURRENT_LOG_FILE=""
 CURRENT_WORK_DIR=""
 CURRENT_TEMP_OUTPUT=""
+FIND_PID=""
+FIND_OUTPUT_FILE=""
 
 show_help() {
     printf '%s\n' \
@@ -166,6 +168,18 @@ init_report() {
 
 cleanup() {
     local exit_code=$?
+
+    # Kill find process if still running (handles Ctrl+C gracefully)
+    if [[ -n "$FIND_PID" && -d "/proc/$FIND_PID" ]]; then
+        kill -TERM "$FIND_PID" 2>/dev/null || true
+        wait "$FIND_PID" 2>/dev/null || true
+    fi
+
+    # Clean up find output temp file
+    if [[ -n "$FIND_OUTPUT_FILE" && -f "$FIND_OUTPUT_FILE" ]]; then
+        rm -f -- "$FIND_OUTPUT_FILE"
+    fi
+
     if [[ -n "${CURRENT_WORK_DIR:-}" && -d "${CURRENT_WORK_DIR}" ]]; then
         if [[ $exit_code -ne 0 && $DIAGNOSTICS_DUMPED -eq 0 ]]; then
             printf "\n============================================================\n" >&2
@@ -645,12 +659,32 @@ main() {
     fi
 
     local error_occurred=0
+
+    # Start find in background to allow proper signal handling on Ctrl+C
+    FIND_OUTPUT_FILE=$(mktemp) || {
+        printf "ERROR: Could not create temp file for find output\n" >&2
+        return 1
+    }
+    find -- "$SOURCE_DIR" -type f -print0 > "$FIND_OUTPUT_FILE" &
+    FIND_PID=$!
+    wait "$FIND_PID"
+    local find_exit=$?
+    if [[ $find_exit -ne 0 ]]; then
+        printf "ERROR: find command failed with exit code %d\n" "$find_exit" >&2
+        return 1
+    fi
+
+    # Read from find output file
     while IFS= read -r -d '' src_file; do
         if ! process_file "$src_file"; then
             printf "WARNING: Could not process '%s'\n" "$src_file"
             error_occurred=1
         fi
-    done < <(find -- "$SOURCE_DIR" -type f -print0 || { printf "ERROR: find failed\n" >&2; exit 1; })
+    done < "$FIND_OUTPUT_FILE"
+
+    rm -f -- "$FIND_OUTPUT_FILE"
+    FIND_OUTPUT_FILE=""
+
     if [[ $error_occurred == 1 ]]; then
         return 1
     fi
