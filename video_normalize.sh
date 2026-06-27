@@ -77,14 +77,14 @@ check_ffmpeg_encoders() {
         exit 1
     }
 
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libsvtav1'; then
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'encoders:.*libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
         printf "DEBUG: ffmpeg output contains:\n" >&2
         printf '%s\n' "$ffmpeg_output" | grep -i av1 >&2
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libopus'; then
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'encoders:.*libopus'; then
         printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
         printf "Please install ffmpeg with libopus enabled\n" >&2
         exit 1
@@ -190,10 +190,12 @@ cleanup() {
     INTERRUPTED=1
 
     # Kill find process if still running (handles Ctrl+C gracefully)
-    if [[ -n "$FIND_PID" && -d "/proc/$FIND_PID" ]]; then
+    if [[ -n "$FIND_PID" ]] && kill -0 "$FIND_PID" 2>/dev/null; then
         kill -TERM "$FIND_PID" 2>/dev/null || true
         wait "$FIND_PID" 2>/dev/null || true
     fi
+
+    FIND_PID=""
 
     # Clean up find output temp file
     if [[ -n "$FIND_OUTPUT_FILE" && -f "$FIND_OUTPUT_FILE" ]]; then
@@ -684,15 +686,17 @@ main() {
     local error_occurred=0
 
     # Start find in background to allow proper signal handling on Ctrl+C
-    FIND_OUTPUT_FILE=$(mktemp) || {
+    FIND_OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/video_normalize.find.XXXXXX") || {
         printf "ERROR: Could not create temp file for find output\n" >&2
         return 1
     }
     find -- "$SOURCE_DIR" -type f -print0 > "$FIND_OUTPUT_FILE" &
     FIND_PID=$!
-    wait "$FIND_PID"
-    local find_exit=$?
-    if [[ $find_exit -ne 0 ]]; then
+    if wait "$FIND_PID"; then
+        FIND_PID=""
+    else
+        local find_exit=$?
+        FIND_PID=""
         printf "ERROR: find command failed with exit code %d\n" "$find_exit" >&2
         return 1
     fi
