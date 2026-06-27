@@ -710,8 +710,8 @@ main() {
         # Check if interrupted (Ctrl+C was pressed)
         if [[ $INTERRUPTED -eq 1 ]]; then
             echo "" >&2
-            printf "Interrupted by user. Aborting.\n" >&2
-            break
+            printf "\nInterrupted by user. Aborting.\n" >&2
+            return 130
         fi
 
         if ! process_file "$src_file"; then
