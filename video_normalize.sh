@@ -32,6 +32,7 @@ CURRENT_WORK_DIR=""
 CURRENT_TEMP_OUTPUT=""
 FIND_PID=""
 FIND_OUTPUT_FILE=""
+INTERRUPTED=0
 
 show_help() {
     printf '%s\n' \
@@ -184,6 +185,9 @@ init_report() {
 
 cleanup() {
     local exit_code=$?
+
+    # Set interrupt flag to signal main loop to stop
+    INTERRUPTED=1
 
     # Kill find process if still running (handles Ctrl+C gracefully)
     if [[ -n "$FIND_PID" && -d "/proc/$FIND_PID" ]]; then
@@ -692,6 +696,13 @@ main() {
 
     # Read from find output file
     while IFS= read -r -d '' src_file; do
+        # Check if interrupted (Ctrl+C was pressed)
+        if [[ $INTERRUPTED -eq 1 ]]; then
+            echo "" >&2
+            printf "Interrupted by user. Aborting.\n" >&2
+            break
+        fi
+
         if ! process_file "$src_file"; then
             printf "WARNING: Could not process '%s'\n" "$src_file"
             error_occurred=1
