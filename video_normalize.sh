@@ -106,7 +106,7 @@ check_ffmpeg_filters() {
     if ! printf '%s\n' "$ffmpeg_filters" | grep -qw 'ssim'; then
         printf "ERROR: ffmpeg built without SSIM filter support\n" >&2
         printf "DEBUG: Available filters (first 20):\n" >&2
-        printf '%s\n' "$ffmpeg_filters" | head -20 >&2
+        printf '%s\n' "$ffmpeg_filters" | awk 'NR<=20' >&2
         exit 1
     fi
     # Check for VMAF filter (word boundary match)
