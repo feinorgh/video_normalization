@@ -70,12 +70,20 @@ require_command() {
 }
 
 check_ffmpeg_encoders() {
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libsvtav1'; then
+    local ffmpeg_output
+    ffmpeg_output=$(ffmpeg -hide_banner -nostdin -codecs 2>&1) || {
+        printf "ERROR: ffmpeg command itself failed\n" >&2
+        exit 1
+    }
+
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
+        printf "DEBUG: ffmpeg output contains:\n" >&2
+        printf '%s\n' "$ffmpeg_output" | grep -i av1 >&2
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
-    if ! ffmpeg -hide_banner -codecs 2>&1 | grep -q 'libopus'; then
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libopus'; then
         printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
         printf "Please install ffmpeg with libopus enabled\n" >&2
         exit 1
@@ -83,11 +91,19 @@ check_ffmpeg_encoders() {
 }
 
 check_ffmpeg_filters() {
-    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'ssim'; then
+    local ffmpeg_output
+    ffmpeg_output=$(ffmpeg -hide_banner -nostdin -filters 2>&1) || {
+        printf "ERROR: ffmpeg -filters command itself failed\n" >&2
+        exit 1
+    }
+
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'ssim'; then
         printf "ERROR: ffmpeg built without SSIM filter support\n" >&2
+        printf "DEBUG: Available filters:\n" >&2
+        printf '%s\n' "$ffmpeg_output" | head -20 >&2
         exit 1
     fi
-    if ! ffmpeg -hide_banner -filters 2>&1 | grep -q 'libvmaf'; then
+    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libvmaf'; then
         printf "ERROR: ffmpeg built without VMAF filter support\n" >&2
         exit 1
     fi
