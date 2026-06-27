@@ -725,6 +725,11 @@ main() {
         fi
     done < "$FIND_OUTPUT_FILE"
 
+    if [[ $INTERRUPTED -eq 1 ]]; then
+        printf "\nInterrupted by user. Aborting.\n" >&2
+        return 130
+    fi
+
     rm -f -- "$FIND_OUTPUT_FILE"
     FIND_OUTPUT_FILE=""
 
