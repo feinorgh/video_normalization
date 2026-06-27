@@ -71,41 +71,49 @@ require_command() {
 }
 
 check_ffmpeg_encoders() {
-    local ffmpeg_output
-    ffmpeg_output=$(ffmpeg -hide_banner -nostdin -codecs 2>&1) || {
-        printf "ERROR: ffmpeg command itself failed\n" >&2
+    local ffmpeg_encoders
+    ffmpeg_encoders=$(ffmpeg -hide_banner -nostdin -encoders 2>&1) || {
+        printf "ERROR: ffmpeg -encoders command itself failed\n" >&2
         exit 1
     }
 
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'encoders:.*libsvtav1'; then
+    # Check for SVT-AV1 encoder (word boundary match works across ffmpeg versions)
+    if ! printf '%s\n' "$ffmpeg_encoders" | grep -qw 'libsvtav1'; then
         printf "ERROR: ffmpeg built without SVT-AV1 encoder support\n" >&2
-        printf "DEBUG: ffmpeg output contains:\n" >&2
-        printf '%s\n' "$ffmpeg_output" | grep -i av1 >&2 || true
+        printf "DEBUG: Available AV1 encoders:\n" >&2
+        printf '%s\n' "$ffmpeg_encoders" | grep -i av1 >&2 || printf "  (none)\n" >&2
         printf "Please install ffmpeg with libsvtav1 enabled\n" >&2
         exit 1
     fi
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'encoders:.*libopus'; then
+    # Check for Opus encoder (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_encoders" | grep -qw 'libopus'; then
         printf "ERROR: ffmpeg built without Opus encoder support\n" >&2
+        printf "DEBUG: Available Opus encoders:\n" >&2
+        printf '%s\n' "$ffmpeg_encoders" | grep -i opus >&2 || printf "  (none)\n" >&2
         printf "Please install ffmpeg with libopus enabled\n" >&2
         exit 1
     fi
 }
 
 check_ffmpeg_filters() {
-    local ffmpeg_output
-    ffmpeg_output=$(ffmpeg -hide_banner -nostdin -filters 2>&1) || {
+    local ffmpeg_filters
+    ffmpeg_filters=$(ffmpeg -hide_banner -nostdin -filters 2>&1) || {
         printf "ERROR: ffmpeg -filters command itself failed\n" >&2
         exit 1
     }
 
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'ssim'; then
+    # Check for SSIM filter (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_filters" | grep -qw 'ssim'; then
         printf "ERROR: ffmpeg built without SSIM filter support\n" >&2
-        printf "DEBUG: Available filters:\n" >&2
-        printf '%s\n' "$ffmpeg_output" | head -20 >&2
+        printf "DEBUG: Available filters (first 20):\n" >&2
+        printf '%s\n' "$ffmpeg_filters" | head -20 >&2
         exit 1
     fi
-    if ! printf '%s\n' "$ffmpeg_output" | grep -q 'libvmaf'; then
+    # Check for VMAF filter (word boundary match)
+    if ! printf '%s\n' "$ffmpeg_filters" | grep -qw 'libvmaf'; then
         printf "ERROR: ffmpeg built without VMAF filter support\n" >&2
+        printf "DEBUG: Available video measurement filters:\n" >&2
+        printf '%s\n' "$ffmpeg_filters" | grep -iE 'vmaf|psnr|ssim' >&2 || printf "  (none)\n" >&2
         exit 1
     fi
 }
